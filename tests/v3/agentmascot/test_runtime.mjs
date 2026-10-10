@@ -77,7 +77,7 @@ function fakeEnv() {
   };
 }
 
-test('global DOM entry follows modest vertical moves at the live 2x scale in both directions', async () => {
+test('global DOM entry gazes nearby and follows distant vertical moves at the live 2x scale', async () => {
   const f = fakeEnv();
   const id = `pet_${'a'.repeat(32)}`;
   const handle = startAgentMascotPatchEntry(f.env, { api: { get: async () => ({ success: true, message: '', data: {
@@ -88,12 +88,16 @@ test('global DOM entry follows modest vertical moves at the live 2x scale in bot
   f.move(276, 224); // target top 120, just 60 px above the initial height.
   assert.equal(f.events.get('pointermove').options.capture, true);
   for (let i = 0; i <= 90; i++) f.tick(i * 1000 / 60);
-  assert.ok(Math.abs(f.y() - 120) < 1, `upward landing: ${f.y()}`);
-  f.move(276, 304); // target top 200, 80 px below.
+  assert.equal(f.y(), 180, 'nearby pointer changes gaze without jumping');
+  f.move(276, 124); // target top 20, beyond the gaze buffer.
   for (let i = 91; i <= 180; i++) f.tick(i * 1000 / 60);
-  assert.ok(Math.abs(f.y() - 200) < 1, `downward landing: ${f.y()}`);
+  assert.ok(Math.abs(f.y() - 20) < 1, `upward landing: ${f.y()}`);
+  f.move(276, 444); // target top 340.
+  for (let i = 181; i <= 270; i++) f.tick(i * 1000 / 60);
+  assert.ok(Math.abs(f.y() - 340) < 1, `downward landing: ${f.y()}`);
   assert.equal(handle.getState().motion.pointerReceived, true);
-  assert.equal(handle.getState().motion.verticalThreshold, 24);
+  assert.equal(handle.getState().motion.gazeRadius, 104);
+  assert.ok(Math.abs(handle.getState().motion.verticalThreshold - 124.8) < .01);
   const count = f.logs.length;
   await handle.sync(); await handle.sync();
   assert.equal(f.logs.length, count, 'unchanged config and animation frames do not flood logs');
@@ -116,7 +120,10 @@ test('classic loader runs the same vertical-follow runtime and exposes its build
   assert.match(handle.revision, /^[a-f0-9]{16}$/);
   f.move(276, 224);
   for (let i = 0; i <= 90; i++) f.tick(i * 1000 / 60);
-  assert.ok(Math.abs(f.y() - 120) < 1);
+  assert.equal(f.y(), 180);
+  f.move(276, 124);
+  for (let i = 91; i <= 180; i++) f.tick(i * 1000 / 60);
+  assert.ok(Math.abs(f.y() - 20) < 1);
   handle.stop();
 });
 

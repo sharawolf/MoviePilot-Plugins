@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { h as hostProps, _ as _sfc_main$1 } from './PluginWorkspace-Jih6r1_n.js';
+import { h as hostProps, _ as _sfc_main$1 } from './PluginWorkspace-DeBVQCjL.js';
 
 const {mergeProps:_mergeProps,openBlock:_openBlock,createBlock:_createBlock} = await importShared('vue');
 

@@ -1,8 +1,8 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { G, W, C, r, R, F, f, M } from './runtime-BCybTabx.js?v=d8fd367dcd3d3283';
-import { isCustomPet, resolveMascotProfile, createMascotRuntime, petAssetUrls, cloneConfig } from './mascot-runtime.js?v=d8fd367dcd3d3283';
-import { startAgentMascotPatchEntry } from './agentmascot-loader.js?v=d8fd367dcd3d3283';
-import { u } from './provider-mBbtEwEX.js?v=d8fd367dcd3d3283';
+import { G, W, C, r, R, F, f, M } from './runtime-BCybTabx.js?v=94949aa320d4508e';
+import { isCustomPet, resolveMascotProfile, createMascotRuntime, petAssetUrls, cloneConfig } from './mascot-runtime.js?v=94949aa320d4508e';
+import { startAgentMascotPatchEntry } from './agentmascot-loader.js?v=94949aa320d4508e';
+import { u } from './provider-mBbtEwEX.js?v=94949aa320d4508e';
 
 const actionLabels = {
   idle: '待机', walk: '走路', run: '跑步', jump: '跳跃', fall: '下落', land: '落地',

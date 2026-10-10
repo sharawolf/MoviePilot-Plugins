@@ -110,6 +110,77 @@ test('native pet actions animate correct rows and release RAF on stop', () => {
   assert.equal(h.frames.size, 0)
 })
 
+test('nearby pointers keep all gaze directions across animation frames and autonomous hop deadlines', () => {
+  for (const scale of [.6, 1, 2, 4]) {
+    const h = runtimeHarness(2, { anchorX: 500, anchorY: 500 })
+    h.resize({ width: 2200, height: 1400 })
+    h.update({ ...h.config, scale, auto_roam: true })
+    const view = h.runtime.renderState()
+    const radius = Math.max(32, view.height / 2)
+    const center = { x: view.left + view.size / 2, y: view.top + view.height / 2 }
+    h.runtime.start()
+    let step = 0
+    for (let direction = 0; direction < 16; direction++) {
+      const angle = direction * Math.PI / 8
+      h.runtime.handlePointerMove({ x: center.x + Math.sin(angle) * radius * .8,
+        y: center.y - Math.cos(angle) * radius * .8 })
+      for (let tick = 0; tick < 40; tick++) {
+        h.tick(step++ * 1000 / 60)
+        const frame = h.runtime.renderState()
+        assert.deepEqual([frame.left, frame.top], [500, 500], `scale=${scale}, direction=${direction}`)
+        assert.deepEqual([frame.row, frame.column], [9 + Math.floor(direction / 8), direction % 8])
+      }
+    }
+    h.runtime.stop()
+  }
+})
+
+test('vertical chasing begins beyond the gaze buffer and returns to gaze after landing', () => {
+  const h = runtimeHarness(2, { anchorX: 300, anchorY: 300 })
+  h.resize({ width: 1200, height: 900 })
+  h.update({ ...h.config, scale: 2, auto_roam: true })
+  h.runtime.start()
+  let step = 0
+  const advance = count => { for (let i = 0; i < count; i++) h.tick(step++ * 1000 / 60) }
+  h.runtime.handlePointerMove({ x: 396, y: 404 - 80 })
+  advance(60)
+  assert.equal(h.runtime.renderState().top, 300)
+  for (let i = 0; i < 40; i++) {
+    h.runtime.handlePointerMove({ x: 396, y: 404 - 104 + (i % 2 ? -3 : 3) })
+    advance(1)
+    assert.equal(h.runtime.debugState().jumping, false)
+  }
+  h.runtime.handlePointerMove({ x: 396, y: 404 - 160 })
+  advance(1)
+  assert.equal(h.runtime.debugState().jumping, true)
+  advance(90)
+  assert.equal(h.runtime.renderState().top, 140)
+  h.runtime.handlePointerMove({ x: 396 + 80, y: 244 })
+  advance(90)
+  assert.deepEqual([h.runtime.renderState().row, h.runtime.renderState().column], [9, 4])
+  h.runtime.handlePointerMove({ x: 396, y: 244 + 200 })
+  advance(90)
+  assert.equal(h.runtime.renderState().top, 340)
+  h.runtime.stop()
+})
+
+test('horizontal chasing slows down inside the gaze zone and keeps looking at the pointer', () => {
+  const h = runtimeHarness(2, { anchorX: 300, anchorY: 300 })
+  h.resize({ width: 1200, height: 900 })
+  h.update({ ...h.config, scale: 2, speed: 2, auto_roam: true })
+  h.runtime.handlePointerMove({ x: 800, y: 404 })
+  h.runtime.start()
+  for (let i = 0; i <= 360; i++) h.tick(i * 1000 / 60)
+  const view = h.runtime.renderState()
+  assert.ok(view.left > 300)
+  assert.ok(800 - view.left - view.size / 2 < 104)
+  assert.equal(view.top, 300)
+  assert.deepEqual([view.row, view.column], [9, 4])
+  assert.equal(h.runtime.debugState().gazeLocked, true)
+  assert.ok(Math.abs(h.runtime.debugState().vx) < 1)
+  h.runtime.stop()
+})
+
 test('drag suppresses activation and custom config never serializes its image payload', () => {
   const h = runtimeHarness()
   h.runtime.startDrag({x:100,y:100})
@@ -159,10 +230,10 @@ test('small preview follows vertically and a clamped pointer does not cause repe
   const h = runtimeHarness(2, { anchorX: 100, anchorY: 100 })
   h.resize({ width: 600, height: 320 })
   h.update({ ...h.config, scale: 2, speed: 2, auto_roam: false })
-  h.runtime.handlePointerMove({ x: 196, y: 144 })
+  h.runtime.handlePointerMove({ x: 196, y: 0 })
   h.runtime.start()
   for (let i = 0; i <= 90; i++) h.tick(i * 1000 / 60)
-  assert.ok(Math.abs(h.runtime.renderState().top - 40) < 1)
+  assert.equal(h.runtime.renderState().top, 0)
   h.runtime.handlePointerMove({ x: 196, y: 320 })
   for (let i = 91; i <= 300; i++) h.tick(i * 1000 / 60)
   assert.equal(h.runtime.renderState().top, 112)

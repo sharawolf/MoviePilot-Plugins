@@ -2336,11 +2336,12 @@
     let animation = 0, running = false, previous = null, elapsed = 0;
     let manual = null, pointer = null, drag = null, suppressUntil = 0;
     let state = "idle", pose2 = 0, poseElapsed = 0, vx = 0;
-    let jump = null, tracking = false, nextHopAt = 6500, followHopAfter = 0, restUntil = 0;
+    let jump = null, tracking = false, gazeLocked = false, nextHopAt = 6500, followHopAfter = 0, restUntil = 0;
     const frameCount = (name) => config()._pet?.frame_map?.[STATES[name][0]]?.length || STATES[name][1];
     const speed = () => Math.max(0.4, Math.min(2, Number(config().speed) || 1));
     const walking = (name) => name === "right" || name === "left";
-    const verticalThreshold = (d) => Math.max(4, Math.min(24, d.spriteHeight * 0.15, (d.height - d.spriteHeight) * 0.2));
+    const gazeRadius = (d) => Math.max(32, d.spriteHeight / 2);
+    const verticalThreshold = (d) => gazeRadius(d) * 1.2;
     const pointerTargetY = (d) => Math.max(0, Math.min(pointer.y - d.spriteHeight / 2, d.height - d.spriteHeight));
     const frameMs = (name) => walking(name) ? 70 / speed() : 120;
     const dimensions = () => {
@@ -2379,20 +2380,25 @@
       const moveSpeed = 65 * speed() * Math.sqrt(d.size / 96);
       let targetVx = 0;
       const follow = pointer && config().follow_mouse;
+      if (!follow) gazeLocked = false;
       if (!drag && elapsed >= restUntil) {
         if (manual && walking(manual.name)) targetVx = (manual.name === "right" ? 1 : -1) * moveSpeed;
         else if (!manual && follow) {
           const dx = pointer.x - pet.anchorX - d.size / 2;
-          if (Math.abs(dx) > d.size * 0.7) tracking = true;
-          if (Math.abs(dx) < d.size * 0.3) tracking = false;
+          const dy = pointer.y - pet.anchorY - d.spriteHeight / 2;
+          const distance = Math.hypot(dx, dy);
+          if (distance <= gazeRadius(d)) gazeLocked = true;
+          else if (distance > verticalThreshold(d)) gazeLocked = false;
+          if (!gazeLocked && Math.abs(dx) > d.size * 0.7) tracking = true;
+          if (gazeLocked || Math.abs(dx) < d.size * 0.3) tracking = false;
           if (tracking) targetVx = Math.sign(dx) * Math.min(moveSpeed, Math.max(0, Math.abs(dx) - d.size * 0.3) * 4);
           const targetY = pointerTargetY(d);
-          if (!jump && elapsed >= followHopAfter && Math.abs(targetY - pet.anchorY) > verticalThreshold(d)) beginJump(targetY);
+          if (!gazeLocked && !jump && elapsed >= followHopAfter && Math.abs(dy) > verticalThreshold(d) && Math.abs(targetY - pet.anchorY) > 4) beginJump(targetY);
         } else if (!manual && config().auto_roam) {
           tracking = false;
           targetVx = (pet.lookRight ? 1 : -1) * moveSpeed;
         }
-        if (!manual && !jump && config().auto_roam && elapsed >= nextHopAt) beginJump();
+        if (!manual && !follow && !jump && config().auto_roam && elapsed >= nextHopAt) beginJump();
       }
       if (drag) vx = 0;
       else {
@@ -2501,6 +2507,7 @@
       jump = null;
       pointer = null;
       tracking = false;
+      gazeLocked = false;
       vx = 0;
       state = "idle";
       pose2 = 0;
@@ -2536,6 +2543,8 @@
         pointerReceived: Boolean(pointer),
         followMouse: Boolean(config().follow_mouse),
         jumping: Boolean(jump),
+        gazeRadius: gazeRadius(dimensions()),
+        gazeLocked,
         verticalThreshold: verticalThreshold(dimensions()),
         targetY: jump?.to ?? (pointer && config().follow_mouse ? pointerTargetY(dimensions()) : pet.anchorY)
       }),
@@ -2544,6 +2553,8 @@
       },
       handlePointerLeave() {
         pointer = null;
+        gazeLocked = false;
+        nextHopAt = elapsed + 6500;
       },
       startDrag(point) {
         if (!point) return;
@@ -2551,6 +2562,7 @@
         manual = null;
         vx = 0;
         tracking = false;
+        gazeLocked = false;
         drag = { x: point.x - pet.anchorX, y: point.y - pet.anchorY, startX: point.x, startY: point.y };
       },
       moveDrag(point, dx = 0) {
@@ -2667,7 +2679,7 @@
   const ENTRY_SELECTOR = ".agent-assistant-fab";
   const TRIGGER_SELECTOR = ".agent-assistant-fab__trigger";
   const PANEL_SELECTOR = ".agent-assistant-panel";
-  const RUNTIME_REVISION = "d8fd367dcd3d3283";
+  const RUNTIME_REVISION = "94949aa320d4508e";
   function nativeAgentEntryStyle(hiddenClass) {
     return `
     .${hiddenClass} {
