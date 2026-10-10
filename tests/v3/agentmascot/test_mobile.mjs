@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createPointerInput, viewportGeometry } from '../../../plugins.v3/agentmascot/runtime/pointer-input.js'
 import { createMascotRuntime } from '../../../plugins.v3/agentmascot/runtime/mascot-runtime.js'
+import { mount, unmount } from '../../../plugins.v3/agentmascot/runtime/plugin-entry.js'
 
 test('touch scrolling, a second finger and cancellation do not steal the active drag or activate the pet', () => {
   const calls = []
@@ -80,4 +81,36 @@ test('switching renderers or stopping cancels delayed built-in callbacks', () =>
   runtime.updateConfig({ mascot: 'kurisu' })
   runtime.celebrate(); runtime.stop()
   assert.equal(callbacks.size, 0)
+})
+
+test('federated entry uses the actual small container and releases resize and touch handlers', () => {
+  const frames = new Map()
+  let serial = 0, resize, observing = false
+  const env = { getComputedStyle: () => ({ position: 'static' }),
+    requestAnimationFrame: fn => { frames.set(++serial, fn); return serial }, cancelAnimationFrame: id => frames.delete(id),
+    ResizeObserver: class { constructor(fn) { resize = fn } observe() { observing = true } disconnect() { observing = false } } }
+  const document = { defaultView: env, createElement: () => ({ style: {}, handlers: new Map(), children: [],
+    setAttribute() {}, append(...nodes) { this.children.push(...nodes) }, remove() {},
+    addEventListener(name, fn) { this.handlers.set(name, fn) }, removeEventListener(name) { this.handlers.delete(name) } }) }
+  let box = { width: 320, height: 180, left: 20, top: 30 }
+  const container = { ...document.createElement(), ownerDocument: document, getBoundingClientRect: () => box,
+    appendChild(node) { this.children.push(node) } }
+  mount(container, { config: { mascot: `pet_${'a'.repeat(32)}`, scale: 4, auto_roam: false,
+    _pet: { version: 2, rows: 11, sprite_url: '/sprite.png' } } })
+  const root = container.children[0]
+  const assertBounds = () => {
+    const [, x, y] = root.style.transform.match(/translate3d\(([^p]+)px, ([^p]+)px/)
+    assert.ok(Number(x) >= 0 && Number(x) + parseFloat(root.style.width) <= box.width)
+    assert.ok(Number(y) >= 0 && Number(y) + parseFloat(root.style.height) <= box.height)
+  }
+  try {
+    assertBounds()
+    box = { ...box, width: 200, height: 140 }
+    resize(); assertBounds()
+    assert.equal(observing, true)
+  } finally { unmount() }
+  assert.equal(frames.size, 0)
+  assert.equal(root.handlers.size, 0)
+  assert.equal(container.handlers.size, 0)
+  assert.equal(observing, false)
 })
