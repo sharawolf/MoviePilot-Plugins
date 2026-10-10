@@ -26,6 +26,26 @@ class PetImportError(ValueError):
     """A user-correctable archive or asset error."""
 
 
+def animation_frames(rgba: Image.Image, rows: int) -> list[list[list[int]]]:
+    """Play occupied action cells and use an idle pose for absent animations."""
+    visible = []
+    for row in range(rows):
+        visible.append([
+            [row, column] for column in range(8)
+            if rgba.crop((column * 192, row * 208, (column + 1) * 192,
+                          (row + 1) * 208)).getchannel("A").getbbox()
+        ])
+    idle = next((cells for cells in visible if cells), None)
+    if idle is None:
+        raise PetImportError("动画图没有可显示的画面。")
+    result = [cells or idle for cells in visible[:9]]
+    # Look directions have fixed positions; missing directions use the idle pose.
+    for row in range(9, rows):
+        result.append([[row, column] if [row, column] in visible[row] else idle[0]
+                       for column in range(8)])
+    return result
+
+
 def safe_name(name: str) -> str:
     parts = name.rstrip("/").split("/")
     if (not name or "\\" in name or "\x00" in name or ":" in name
@@ -86,16 +106,10 @@ def inspect_archive(payload: bytes) -> tuple[dict, bytes]:
                 raise PetImportError("声明的 Pet 版本与动画图尺寸不一致。")
             image.load()
             rgba = image.convert("RGBA")
-            if rgba.getchannel("A").getextrema()[0] == 255:
-                raise PetImportError("动画图缺少透明背景。")
             counts = FRAME_COUNTS + ([8, 8] if version == 2 else [])
-            for row, count in enumerate(counts):
-                for column in range(8):
-                    alpha = rgba.crop((column * 192, row * 208, (column + 1) * 192,
-                                       (row + 1) * 208)).getchannel("A")
-                    if (column < count) != bool(alpha.getbbox()):
-                        raise PetImportError(f"第 {row + 1} 行第 {column + 1} 格缺帧或占用了空白格。")
-            thumbnail = rgba.crop((0, 0, 192, 208))
+            frame_map = animation_frames(rgba, len(counts))
+            row, column = frame_map[0][0]
+            thumbnail = rgba.crop((column * 192, row * 208, (column + 1) * 192, (row + 1) * 208))
             thumbnail.thumbnail((72, 78))
             output = io.BytesIO()
             thumbnail.save(output, format="PNG")
@@ -112,6 +126,7 @@ def inspect_archive(payload: bytes) -> tuple[dict, bytes]:
     identity = json.dumps([name, description, version], ensure_ascii=False).encode() + image_bytes
     pet = {"id": "pet_" + hashlib.sha256(identity).hexdigest()[:32], "name": name,
            "description": description, "version": version, "rows": len(counts), "mime": mime,
+           "frame_map": frame_map,
            "sha256": hashlib.sha256(image_bytes).hexdigest(),
            "icon": "data:image/png;base64," + base64.b64encode(output.getvalue()).decode()}
     return pet, image_bytes
@@ -180,6 +195,7 @@ class PetStore:
 
 def pet_view(pet: dict, plugin_id: str, image_bytes: bytes | None = None) -> dict:
     view = {key: pet[key] for key in ("id", "name", "description", "version", "rows", "icon")}
+    view["frame_map"] = pet.get("frame_map")
     view["sprite_url"] = (f"data:{pet['mime']};base64," + base64.b64encode(image_bytes).decode()
                           if image_bytes is not None else f"/api/v1/plugin/{plugin_id}/pets/{pet['id']}/image")
     return view

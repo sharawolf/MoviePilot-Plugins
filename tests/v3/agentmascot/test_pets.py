@@ -17,11 +17,13 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 
-def archive(version=2, prefix="", metadata=None, extra=None, bad_frame=False):
-    image = Image.new("RGBA", (1536, 2288 if version == 2 else 1872))
-    for row, count in enumerate(FRAME_COUNTS + ([8, 8] if version == 2 else [])):
-        for column in range(count):
-            image.paste((40, 100, 150, 255), (column*192+50, row*208+60, column*192+110, row*208+170))
+def archive(version=2, prefix="", metadata=None, extra=None, bad_frame=False, cells=None, opaque=False):
+    image = Image.new("RGBA", (1536, 2288 if version == 2 else 1872), (255, 255, 255, 255) if opaque else 0)
+    if cells is None:
+        cells = [(row, column) for row, count in enumerate(FRAME_COUNTS + ([8, 8] if version == 2 else []))
+                 for column in range(count)]
+    for row, column in cells:
+        image.paste((40, 100, 150, 255), (column*192+50, row*208+60, column*192+110, row*208+170))
     if bad_frame:
         image.paste((0, 0, 0, 0), (0, 0, 192, 208))
     output = io.BytesIO()
@@ -55,9 +57,32 @@ def test_invalid_archive_rejected(extra, metadata):
         inspect_archive(archive(extra=extra, metadata=metadata))
 
 
-def test_missing_frame_rejected():
-    with pytest.raises(PetImportError, match="缺帧"):
-        inspect_archive(archive(bad_frame=True))
+def test_missing_frames_are_skipped_and_thumbnail_uses_a_visible_frame():
+    pet, _image = inspect_archive(archive(bad_frame=True))
+    assert pet["frame_map"][0] == [[0, column] for column in range(1, 6)]
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_extra_cells_and_missing_actions_are_playable(version):
+    pet, _image = inspect_archive(archive(version=version, cells=[(0, column) for column in range(7)]))
+    assert len(pet["frame_map"][0]) == 7
+    assert pet["frame_map"][0][-1] == [0, 6]
+    assert pet["frame_map"][7] == pet["frame_map"][0]
+    if version == 2:
+        assert pet["frame_map"][9] == [[0, 0]] * 8
+
+
+def test_first_available_frame_can_supply_missing_idle():
+    pet, _image = inspect_archive(archive(cells=[(3, 2)]))
+    assert pet["frame_map"][0] == [[3, 2]]
+    assert pet["frame_map"][10] == [[3, 2]] * 8
+
+
+def test_opaque_background_is_accepted_but_invisible_sheet_is_rejected():
+    pet, _image = inspect_archive(archive(opaque=True))
+    assert all(len(row) == 8 for row in pet["frame_map"])
+    with pytest.raises(PetImportError, match="没有可显示"):
+        inspect_archive(archive(cells=[]))
 
 
 def test_store_deduplicates_and_survives_new_instance(tmp_path):
@@ -85,12 +110,14 @@ def test_http_preview_save_switch_reload_asset_delete(tmp_path, monkeypatch):
     for route in plugin.get_api():
         app.add_api_route(route["path"], route["endpoint"], methods=route["methods"], response_model=route.get("response_model"))
     with TestClient(app) as client:
-        payload = archive(prefix="full/package/", extra={"full/tool.py":"raise RuntimeError('must never execute')"})
+        payload = archive(prefix="full/package/", bad_frame=True,
+                          extra={"full/tool.py":"raise RuntimeError('must never execute')"})
         preview = client.post("/pets/inspect", files={"file":("pet.zip",payload,"application/zip")}).json()
         assert preview["success"] and preview["data"]["pet"]["sprite_url"].startswith("data:image/png;")
         assert client.get("/pets").json()["data"]["pets"] == []
         imported = client.post("/pets/import", files={"file":("pet.zip",payload,"application/zip")}).json()
         pet = imported["data"]["pet"]
+        assert pet["frame_map"][0][0] == [0, 1]
         assert pet["id"] == preview["data"]["pet"]["id"]
         assert len(client.get("/pets").json()["data"]["pets"]) == 1
         assert not (tmp_path / "pets" / pet["id"] / "tool.py").exists()
@@ -98,6 +125,7 @@ def test_http_preview_save_switch_reload_asset_delete(tmp_path, monkeypatch):
         plugin.init_plugin(saved[-1])
         status = client.get("/status").json()["data"]
         assert status["config"]["mascot"] == pet["id"] and status["pet"]["id"] == pet["id"]
+        assert status["pet"]["frame_map"] == pet["frame_map"]
         assert client.get("/public_status").json()["data"]["pet"]["id"] == pet["id"]
         image = client.get(f'/pets/{pet["id"]}/image')
         assert image.status_code == 200 and image.headers["content-type"] == "image/png"

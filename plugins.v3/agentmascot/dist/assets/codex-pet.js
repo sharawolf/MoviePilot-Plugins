@@ -14,6 +14,7 @@ export function createCodexPetRuntime(options) {
   let animation = 0, running = false, previous = 0, elapsed = 0
   let manual = null, pointer = null, drag = null, suppressUntil = 0
   let state = 'idle', pose = 0
+  const frameCount = name => config()._pet?.frame_map?.[STATES[name][0]]?.length || STATES[name][1]
   const dimensions = () => {
     const bounds = options.bounds?.() || { width: 640, height: 360 }
     const size = Math.min(96 * (config().scale || 1), Math.max(24, bounds.width - 16), Math.max(24, (bounds.height - 16) * 192 / 208))
@@ -43,7 +44,7 @@ export function createCodexPetRuntime(options) {
       }
     }
     if (drag) state = pet.lookRight ? 'right' : 'left'
-    pose = Math.floor((elapsed - (manual?.start || 0)) / 120) % STATES[state][1]
+    pose = Math.floor((elapsed - (manual?.start || 0)) / 120) % frameCount(state)
   }
   function tick(time) {
     if (!running) return
@@ -67,7 +68,7 @@ export function createCodexPetRuntime(options) {
   function playAction(name) {
     name = ALIASES[name] || name
     if (!STATES[name]) return false
-    manual = { name, start: elapsed, until: elapsed + STATES[name][1] * 120 }
+    manual = { name, start: elapsed, until: elapsed + frameCount(name) * 120 }
     state = name
     pose = 0
     options.onUpdate?.()
@@ -87,6 +88,8 @@ export function createCodexPetRuntime(options) {
         column = direction % 8
       }
     }
+    const frames = profile?.frame_map?.[row]
+    if (frames?.length) [row, column] = frames[column % frames.length]
     return {
       size: d.size, height: d.spriteHeight, left: pet.anchorX, top: pet.anchorY,
       frame: profile?.sprite_url || '', flipX: 1, row, column,

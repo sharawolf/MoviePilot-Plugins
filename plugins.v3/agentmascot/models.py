@@ -34,6 +34,7 @@ class PetInfo(BaseModel):
     description: str
     version: Literal[1, 2]
     rows: Literal[9, 11]
+    frame_map: list[list[tuple[int, int]]] | None = None
     icon: str
     sprite_url: str
 
