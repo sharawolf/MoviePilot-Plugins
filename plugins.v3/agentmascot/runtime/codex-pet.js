@@ -9,7 +9,8 @@ export function createCodexPetRuntime(options) {
   const scheduler = options.scheduler || globalThis
   let localConfig = options.config || {}
   const config = () => options.getConfig?.() || localConfig
-  const pet = { anchorX: 80, anchorY: 0, lookRight: true, ...options.initialPet }
+  const initialPet = { anchorX: 80, anchorY: 180, lookRight: true, ...options.initialPet }
+  const pet = { ...initialPet }
   let animation = 0, running = false, previous = 0, elapsed = 0
   let manual = null, pointer = null, drag = null, suppressUntil = 0
   let state = 'idle', pose = 0
@@ -21,7 +22,7 @@ export function createCodexPetRuntime(options) {
   function clampToBounds() {
     const bounds = dimensions()
     pet.anchorX = Math.max(0, Math.min(pet.anchorX, bounds.width - bounds.size))
-    pet.anchorY = drag ? Math.max(0, Math.min(pet.anchorY, bounds.height - bounds.spriteHeight)) : Math.max(0, bounds.height - bounds.spriteHeight - 12)
+    pet.anchorY = Math.max(0, Math.min(pet.anchorY, bounds.height - bounds.spriteHeight))
   }
   function update(dt) {
     elapsed += dt
@@ -93,12 +94,16 @@ export function createCodexPetRuntime(options) {
         maxWidth: 'none', objectFit: 'fill', left: `${-column * d.size}px`, top: `${-row * d.spriteHeight}px` },
     }
   }
-  function resetPose() { manual = null; state = 'idle'; pose = 0; pet.anchorX = 80; clampToBounds(); options.onUpdate?.() }
+  function resetPose() {
+    manual = null; state = 'idle'; pose = 0
+    pet.anchorX = initialPet.anchorX; pet.anchorY = initialPet.anchorY
+    clampToBounds(); options.onUpdate?.()
+  }
   return {
     pet, config, start, stop, clampToBounds, renderState, resetPose, playAction,
     playBehavior: name => name === 'rest' ? playAction('idle') : false,
     updateConfig(next) { localConfig = next; clampToBounds() },
-    debugState: () => ({ action: state, surface: 'ground', state: drag ? 'drag' : state, poseIndex: pose }),
+    debugState: () => ({ action: state, surface: 'free', state: drag ? 'drag' : state, poseIndex: pose }),
     handlePointerMove(point) { pointer = point }, handlePointerLeave() { pointer = null },
     startDrag(point) { if (point) drag = { x: point.x - pet.anchorX, y: point.y - pet.anchorY, startX: point.x, startY: point.y } },
     moveDrag(point, dx = 0) {

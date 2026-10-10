@@ -66,14 +66,16 @@ test('delete calls the exact instance and removes only after acknowledgement', a
   assert.equal(removed, pet.id)
 })
 
-function runtimeHarness(version = 2) {
+function runtimeHarness(version = 2, initialPet) {
   let config = { enabled: true, mascot: pet.id, scale: 1, speed: 1, auto_roam: false,
     follow_mouse: true, _pet: { ...pet, version, rows: version === 2 ? 11 : 9 } }
   let serial = 0
+  let bounds = { width: 640, height: 360 }
   const frames = new Map()
-  const runtime = createMascotRuntime({ getConfig: () => config, bounds: () => ({ width: 640, height: 360 }),
+  const runtime = createMascotRuntime({ getConfig: () => config, bounds: () => bounds, initialPet,
     scheduler: { requestAnimationFrame: cb => { frames.set(++serial, cb); return serial }, cancelAnimationFrame: id => frames.delete(id) } })
   return { runtime, frames, config, update(next) { config = next; runtime.updateConfig(next) },
+    resize(next) { bounds = next; runtime.clampToBounds() },
     tick(time) { const [id, callback] = frames.entries().next().value; frames.delete(id); callback(time) } }
 }
 
@@ -118,4 +120,37 @@ test('drag suppresses activation and custom config never serializes its image pa
   assert.equal(cloneConfig(h.config)._pet, undefined)
   assert.equal(cloneConfig(h.config).mascot, pet.id)
   assert.equal(petAssetUrls({ ...pet, sprite_url: '/api/v1/image' }, { location: { origin:'https://host.test' }, document: { querySelector:()=>({href:'https://host.test/mp/'}) } }).sprite_url, 'https://host.test/mp/api/v1/image')
+})
+
+test('imported pet keeps its initial and dropped height across animation and config polling', () => {
+  const h = runtimeHarness(2, { anchorX: 180, anchorY: 180 })
+  assert.equal(h.runtime.renderState().top, 180)
+  h.runtime.startDrag({ x: 200, y: 200 })
+  h.runtime.moveDrag({ x: 230, y: 100 }, 30)
+  h.runtime.endDrag()
+  assert.equal(h.runtime.renderState().top, 80)
+  assert.equal(h.runtime.renderState().left, 210)
+  h.update({ ...h.config, auto_roam: true, follow_mouse: false })
+  h.runtime.start()
+  for (let i = 1; i <= 120; i++) h.tick(i * 40)
+  assert.equal(h.runtime.renderState().top, 80)
+  assert.ok(h.runtime.renderState().left > 210)
+  h.update({ ...h.config, scale: 1.5 })
+  assert.equal(h.runtime.renderState().top, 80)
+  h.runtime.stop()
+})
+
+test('viewport changes only constrain out-of-bounds coordinates and reset restores the initial position', () => {
+  const h = runtimeHarness(1, { anchorX: 180, anchorY: 180 })
+  h.resize({ width: 800, height: 600 })
+  assert.equal(h.runtime.renderState().top, 180)
+  h.resize({ width: 240, height: 180 })
+  const small = h.runtime.renderState()
+  assert.ok(small.left >= 0 && small.left + small.size <= 240)
+  assert.ok(small.top >= 0 && small.top + small.height <= 180)
+  h.resize({ width: 800, height: 600 })
+  assert.equal(h.runtime.renderState().top, small.top)
+  h.runtime.resetPose()
+  assert.equal(h.runtime.renderState().top, 180)
+  assert.equal(h.runtime.renderState().left, 180)
 })

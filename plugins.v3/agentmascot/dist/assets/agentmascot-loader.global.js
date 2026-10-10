@@ -2331,7 +2331,8 @@
     const scheduler = options.scheduler || globalThis;
     let localConfig = options.config || {};
     const config = () => options.getConfig?.() || localConfig;
-    const pet = { anchorX: 80, anchorY: 0, lookRight: true, ...options.initialPet };
+    const initialPet = { anchorX: 80, anchorY: 180, lookRight: true, ...options.initialPet };
+    const pet = { ...initialPet };
     let animation = 0, running = false, previous = 0, elapsed = 0;
     let manual = null, pointer = null, drag = null, suppressUntil = 0;
     let state = "idle", pose2 = 0;
@@ -2343,7 +2344,7 @@
     function clampToBounds() {
       const bounds = dimensions();
       pet.anchorX = Math.max(0, Math.min(pet.anchorX, bounds.width - bounds.size));
-      pet.anchorY = drag ? Math.max(0, Math.min(pet.anchorY, bounds.height - bounds.spriteHeight)) : Math.max(0, bounds.height - bounds.spriteHeight - 12);
+      pet.anchorY = Math.max(0, Math.min(pet.anchorY, bounds.height - bounds.spriteHeight));
     }
     function update(dt) {
       elapsed += dt;
@@ -2432,7 +2433,8 @@
       manual = null;
       state = "idle";
       pose2 = 0;
-      pet.anchorX = 80;
+      pet.anchorX = initialPet.anchorX;
+      pet.anchorY = initialPet.anchorY;
       clampToBounds();
       options.onUpdate?.();
     }
@@ -2450,7 +2452,7 @@
         localConfig = next;
         clampToBounds();
       },
-      debugState: () => ({ action: state, surface: "ground", state: drag ? "drag" : state, poseIndex: pose2 }),
+      debugState: () => ({ action: state, surface: "free", state: drag ? "drag" : state, poseIndex: pose2 }),
       handlePointerMove(point) {
         pointer = point;
       },
