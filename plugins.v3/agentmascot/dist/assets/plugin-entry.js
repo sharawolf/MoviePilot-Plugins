@@ -1,5 +1,5 @@
-import { D as DEFAULT_CONFIG, V as VIEWPORT_PADDING, f as buildSurfaceLanes } from './runtime-BCybTabx.js';
-import { normalizeConfig, createMascotRuntime, applyMascotImage } from './mascot-runtime.js';
+import { D as DEFAULT_CONFIG, V as VIEWPORT_PADDING, f as buildSurfaceLanes } from './runtime-BCybTabx.js?v=d8fd367dcd3d3283';
+import { normalizeConfig, createMascotRuntime, applyMascotImage } from './mascot-runtime.js?v=d8fd367dcd3d3283';
 
 const ROOT_CLASS = 'agentmascot-plugin-root';
 const SHADOW_CLASS = 'agentmascot-plugin-shadow';

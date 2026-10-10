@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 
 from .config import apply_config_state
+from .diagnostics import log_configuration
 from .loader import build_loader_response
 from .manifest import ACTION_SUMMARY, AVATAR_SUMMARY
 from .models import (
@@ -30,6 +31,7 @@ class AgentMascotApi:
     def __init__(self, plugin: Any, plugin_root: Path):
         self._plugin = plugin
         self._plugin_root = plugin_root
+        self._missing_selected = None
 
     def _catalog(self):
         return [pet_view(pet, self._plugin.__class__.__name__) for pet in self._plugin._pets.list()]
@@ -37,10 +39,16 @@ class AgentMascotApi:
     def _selected(self):
         selected = self._plugin._current_config()["mascot"]
         if not PET_ID.fullmatch(selected):
+            self._missing_selected = None
             return None
         try:
-            return pet_view(self._plugin._pets.get(selected), self._plugin.__class__.__name__)
+            result = pet_view(self._plugin._pets.get(selected), self._plugin.__class__.__name__)
+            self._missing_selected = None
+            return result
         except PetImportError:
+            if self._missing_selected != selected:
+                logger.warning("所选桌宠资源缺失或损坏，页面入口无法显示: id=%s", selected)
+                self._missing_selected = selected
             return None
 
     def get_status(self) -> StatusResponse:
@@ -73,7 +81,10 @@ class AgentMascotApi:
         )
 
     def get_loader(self) -> Response:
-        return build_loader_response(self._plugin_root)
+        response = build_loader_response(self._plugin_root)
+        if response.status_code == 200:
+            logger.info("桌宠入口脚本已提供: bytes=%s；此记录不代表浏览器已执行", len(response.body))
+        return response
 
     def list_pets(self) -> PetListResponse:
         return PetListResponse(success=True, data={"pets": self._catalog()})
@@ -84,9 +95,12 @@ class AgentMascotApi:
             pet, image_bytes = inspect_archive(payload)
             if save:
                 pet = self._plugin._pets.save(pet, image_bytes)
+            logger.info("Pet %s成功: id=%s name=%r version=%s rows=%s",
+                        "导入或复用" if save else "预览校验", pet["id"], pet["name"], pet["version"], pet["rows"])
             return PetResponse(success=True, data={"pet": pet_view(
                 pet, self._plugin.__class__.__name__, None if save else image_bytes)})
         except PetImportError as error:
+            logger.warning("Pet %s失败: %s", "导入" if save else "预览校验", error)
             return PetResponse(success=False, message=str(error))
         except OSError as error:
             logger.error(f"保存 AgentMascot Pet 失败: {error}")
@@ -98,8 +112,10 @@ class AgentMascotApi:
         try:
             with PET_LOCK:
                 self._plugin._pets.remove(pet_id, self._plugin._current_config()["mascot"])
+            logger.info("Pet 移除完成: id=%s", pet_id)
             return DeleteResponse(success=True)
         except PetImportError as error:
+            logger.warning("Pet 移除拒绝: %s", error)
             return DeleteResponse(success=False, message=str(error))
         except OSError as error:
             logger.error(f"移除 AgentMascot Pet 失败: {error}")
@@ -122,6 +138,7 @@ class AgentMascotApi:
         try:
             apply_config_state(self._plugin, {**previous, **config})
             self._plugin._save_config()
+            log_configuration(self._plugin, "桌宠配置保存完成", previous)
             return self.get_status()
         except Exception as error:  # noqa: BLE001 - Roll back state for any host persistence failure.
             apply_config_state(self._plugin, previous)

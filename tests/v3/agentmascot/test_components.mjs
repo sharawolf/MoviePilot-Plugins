@@ -4,6 +4,7 @@ import { createRequire, Module } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { RUNTIME_REVISION } from '../../../plugins.v3/agentmascot/runtime/agentmascot-loader.js'
 
 const plugin = fileURLToPath(new URL('../../../plugins.v3/agentmascot/', import.meta.url))
 const require = createRequire(resolve(plugin, 'package.json'))
@@ -56,7 +57,7 @@ test('real Config component connects navigation, discard protection, host save a
   const frames = new Set()
   const listeners = new Set()
   let observers = 0
-  const handle = { pluginId: 'AgentMascot_clone', sync: async () => {}, getState: () => ({ mounted: true, nativeEntryAvailable: true }) }
+  const handle = { pluginId: 'AgentMascot_clone', revision: RUNTIME_REVISION, sync: async () => {}, getState: () => ({ mounted: true, nativeEntryAvailable: true }) }
   globalThis.window = {
     __AgentMascotGlobalLoader: handle,
     setInterval: () => { const id = ++serial; timers.add(id); return id }, clearInterval: id => timers.delete(id),

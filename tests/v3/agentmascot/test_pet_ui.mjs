@@ -155,6 +155,21 @@ test('viewport changes only constrain out-of-bounds coordinates and reset restor
   assert.equal(h.runtime.renderState().left, 180)
 })
 
+test('small preview follows vertically and a clamped pointer does not cause repeated edge jumps', () => {
+  const h = runtimeHarness(2, { anchorX: 100, anchorY: 100 })
+  h.resize({ width: 600, height: 320 })
+  h.update({ ...h.config, scale: 2, speed: 2, auto_roam: false })
+  h.runtime.handlePointerMove({ x: 196, y: 144 })
+  h.runtime.start()
+  for (let i = 0; i <= 90; i++) h.tick(i * 1000 / 60)
+  assert.ok(Math.abs(h.runtime.renderState().top - 40) < 1)
+  h.runtime.handlePointerMove({ x: 196, y: 320 })
+  for (let i = 91; i <= 300; i++) h.tick(i * 1000 / 60)
+  assert.equal(h.runtime.renderState().top, 112)
+  assert.equal(h.runtime.debugState().jumping, false)
+  h.runtime.stop()
+})
+
 test('imported frame maps play extra action frames and replace absent actions and gaze', () => {
   const h = runtimeHarness()
   const frame_map = Array.from({ length: 11 }, () => [[0, 3]])

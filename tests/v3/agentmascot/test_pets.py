@@ -6,6 +6,7 @@ import zipfile
 
 import pytest
 from app.plugins.agentmascot import AgentMascot
+from app.sdk.logging import logger
 from app.plugins.agentmascot.pets import (
     FRAME_COUNTS,
     PetImportError,
@@ -102,6 +103,9 @@ def test_store_deduplicates_and_survives_new_instance(tmp_path):
 
 def test_http_preview_save_switch_reload_asset_delete(tmp_path, monkeypatch):
     saved = []
+    logs = []
+    for level in ["info", "warning", "error"]:
+        monkeypatch.setattr(logger, level, lambda message, *args: logs.append(message % args if args else message))
     monkeypatch.setattr(AgentMascot, "get_data_path", lambda self: tmp_path)
     monkeypatch.setattr(AgentMascot, "update_config", lambda self, config: saved.append(dict(config)))
     plugin = object.__new__(AgentMascot)
@@ -134,6 +138,10 @@ def test_http_preview_save_switch_reload_asset_delete(tmp_path, monkeypatch):
         assert client.delete(f'/pets/{pet["id"]}').json()["success"]
         assert client.get(f'/pets/{pet["id"]}/image').status_code == 404
         assert not client.post("/config", json={"mascot":pet["id"]}).json()["success"]
+        assert not client.post("/pets/inspect", files={"file":("broken.zip", b"not a zip")}).json()["success"]
+        for expected in ["预览校验成功", "导入或复用成功", "配置保存完成", "移除拒绝", "移除完成", "预览校验失败"]:
+            assert any(expected in line for line in logs), expected
+        assert not any("data:image" in line or "sprite_url" in line for line in logs)
 
 
 def test_missing_selected_asset_keeps_settings_recoverable(tmp_path, monkeypatch):

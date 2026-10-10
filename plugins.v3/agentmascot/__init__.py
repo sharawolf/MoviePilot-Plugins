@@ -1,12 +1,14 @@
 from pathlib import Path
 from typing import Annotated, Any
 
+from app.sdk.logging import logger
 from app.sdk.plugin import _PluginBase
 from fastapi import Body, File, UploadFile
 from fastapi.responses import Response
 
 from .api import AgentMascotApi
 from .config import apply_config_state, current_config_state
+from .diagnostics import log_configuration
 from .manifest import (
     AUTH_LEVEL,
     AUTHOR_URL,
@@ -51,7 +53,13 @@ class AgentMascot(_PluginBase):
             self._pets = PetStore(self.get_data_path())
             self._api = AgentMascotApi(self, Path(__file__).resolve().parent)
             apply_config_state(self, config)
-            self._save_config()
+            try:
+                self._save_config()
+            except Exception:
+                logger.error("桌宠初始化失败: 配置持久化失败")
+                raise
+            self._stopped = False
+            log_configuration(self, "桌宠初始化完成")
 
     def get_state(self) -> bool:
         return bool(getattr(self, "_enabled", False))
@@ -130,7 +138,9 @@ class AgentMascot(_PluginBase):
         ]
 
     def stop_service(self):
-        pass
+        if not getattr(self, "_stopped", True):
+            logger.info("桌宠后端停止: instance=%s；页面入口由下一次配置检查更新", self.__class__.__name__)
+            self._stopped = True
 
     def _current_config(self) -> dict[str, Any]:
         return current_config_state(self)
@@ -154,6 +164,7 @@ class AgentMascot(_PluginBase):
                 try:
                     self._pets.get(selected)
                 except ValueError:
+                    logger.warning("桌宠配置保存拒绝: 所选角色不存在，id=%s", selected)
                     return StatusResponse(success=False, message="请先导入此角色。")
             return self._api.save_config(config)
 

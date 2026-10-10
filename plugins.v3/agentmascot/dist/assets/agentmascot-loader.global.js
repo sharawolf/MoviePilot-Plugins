@@ -2340,6 +2340,8 @@
     const frameCount = (name) => config()._pet?.frame_map?.[STATES[name][0]]?.length || STATES[name][1];
     const speed = () => Math.max(0.4, Math.min(2, Number(config().speed) || 1));
     const walking = (name) => name === "right" || name === "left";
+    const verticalThreshold = (d) => Math.max(4, Math.min(24, d.spriteHeight * 0.15, (d.height - d.spriteHeight) * 0.2));
+    const pointerTargetY = (d) => Math.max(0, Math.min(pointer.y - d.spriteHeight / 2, d.height - d.spriteHeight));
     const frameMs = (name) => walking(name) ? 70 / speed() : 120;
     const dimensions = () => {
       const bounds = options.bounds?.() || { width: 640, height: 360 };
@@ -2384,8 +2386,8 @@
           if (Math.abs(dx) > d.size * 0.7) tracking = true;
           if (Math.abs(dx) < d.size * 0.3) tracking = false;
           if (tracking) targetVx = Math.sign(dx) * Math.min(moveSpeed, Math.max(0, Math.abs(dx) - d.size * 0.3) * 4);
-          const targetY = pointer.y - d.spriteHeight / 2;
-          if (!jump && elapsed >= followHopAfter && Math.abs(targetY - pet.anchorY) > d.spriteHeight * 0.65) beginJump(targetY);
+          const targetY = pointerTargetY(d);
+          if (!jump && elapsed >= followHopAfter && Math.abs(targetY - pet.anchorY) > verticalThreshold(d)) beginJump(targetY);
         } else if (!manual && config().auto_roam) {
           tracking = false;
           targetVx = (pet.lookRight ? 1 : -1) * moveSpeed;
@@ -2529,7 +2531,13 @@
         state: drag ? "drag" : state,
         poseIndex: pose2,
         vx,
-        targetY: jump?.to ?? pet.anchorY
+        x: pet.anchorX,
+        y: pet.anchorY,
+        pointerReceived: Boolean(pointer),
+        followMouse: Boolean(config().follow_mouse),
+        jumping: Boolean(jump),
+        verticalThreshold: verticalThreshold(dimensions()),
+        targetY: jump?.to ?? (pointer && config().follow_mouse ? pointerTargetY(dimensions()) : pet.anchorY)
       }),
       handlePointerMove(point) {
         pointer = point;
@@ -2659,6 +2667,7 @@
   const ENTRY_SELECTOR = ".agent-assistant-fab";
   const TRIGGER_SELECTOR = ".agent-assistant-fab__trigger";
   const PANEL_SELECTOR = ".agent-assistant-panel";
+  const RUNTIME_REVISION = "d8fd367dcd3d3283";
   function nativeAgentEntryStyle(hiddenClass) {
     return `
     .${hiddenClass} {
@@ -2876,7 +2885,7 @@
       crop.append(img);
       root.append(crop, shadow);
       env.document.body.appendChild(root);
-      env.document.addEventListener("pointermove", onPointerMove, { passive: true });
+      env.document.addEventListener("pointermove", onPointerMove, { passive: true, capture: true });
       root.addEventListener("pointerdown", startDrag);
       root.addEventListener("pointermove", onDrag);
       root.addEventListener("pointerup", endDrag);
@@ -2884,7 +2893,7 @@
       root.addEventListener("click", onClick);
     }
     function unmount() {
-      env.document.removeEventListener("pointermove", onPointerMove);
+      env.document.removeEventListener("pointermove", onPointerMove, true);
       root?.remove();
       root = null;
       img = null;
@@ -2931,10 +2940,14 @@
   function startAgentMascotPatchEntry(env = globalThis, options = {}) {
     const pluginId = options.pluginId || PLUGIN_ID;
     const previous = env.__AgentMascotGlobalLoader;
-    if (previous?.pluginId === pluginId) return previous;
-    previous?.stop();
+    if (previous?.pluginId === pluginId && previous.revision === RUNTIME_REVISION) return previous;
+    previous?.stop?.();
     let stopped = false;
     let syncing = false;
+    let lastConfigLog = "";
+    let lastError = "";
+    const log = (level, message, detail) => env.console?.[level]?.(`[AgentMascot] ${message}`, detail);
+    if (previous) log("info", "替换旧桌宠运行器", { previous: previous.revision || "legacy", revision: RUNTIME_REVISION });
     let config = { ...DEFAULT_CONFIG };
     let configTimer = 0;
     let mounted = false;
@@ -2975,6 +2988,23 @@
     async function loadConfig() {
       config = await loadMoviePilotPluginConfig(pluginId, { ...options, env });
       runtime.updateConfig(config);
+      const detail = {
+        pluginId,
+        revision: RUNTIME_REVISION,
+        enabled: config.enabled,
+        mascot: config.mascot,
+        renderer: isCustomPet(config.mascot) ? "codex-pet" : "builtin",
+        followMouse: config.follow_mouse,
+        autoRoam: config.auto_roam,
+        scale: config.scale,
+        speed: config.speed,
+        assetAvailable: !isCustomPet(config.mascot) || Boolean(config._pet)
+      };
+      const signature = JSON.stringify(detail);
+      if (signature !== lastConfigLog) {
+        log(detail.assetAvailable ? "info" : "warn", "桌宠页面配置已应用", detail);
+        lastConfigLog = signature;
+      }
       return config;
     }
     function mount() {
@@ -2987,6 +3017,7 @@
       agentEntry.hide();
       runtime.start();
       mounted = true;
+      log("info", "全局桌宠已挂载", { revision: RUNTIME_REVISION });
     }
     function unmount() {
       if (!mounted) return;
@@ -2994,6 +3025,7 @@
       agentEntry.destroy();
       adapter.unmount();
       mounted = false;
+      log("info", "全局桌宠已卸载");
     }
     async function syncFromConfig() {
       if (stopped || syncing) return;
@@ -3008,9 +3040,13 @@
         } else {
           unmount();
         }
+        if (lastError) log("info", "全局入口配置读取已恢复");
+        lastError = "";
       } catch (error) {
         unmount();
-        console.debug("[AgentMascot] 全局入口配置读取失败", error);
+        const message = String(error?.message || error);
+        if (lastError !== message) log("error", "全局入口配置读取失败", message);
+        lastError = message;
       } finally {
         syncing = false;
       }
@@ -3020,12 +3056,17 @@
     env.addEventListener("resize", adapter.onResize);
     const handle = {
       pluginId,
+      revision: RUNTIME_REVISION,
       sync: syncFromConfig,
       getState() {
         return {
           mounted,
           syncing,
           stopped,
+          revision: RUNTIME_REVISION,
+          renderer: isCustomPet(config.mascot) ? "codex-pet" : "builtin",
+          motion: runtime.debugState(),
+          error: lastError || null,
           nativeEntryAvailable: Boolean(env.document.querySelector(TRIGGER_SELECTOR))
         };
       },

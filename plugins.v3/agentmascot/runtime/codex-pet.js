@@ -18,6 +18,8 @@ export function createCodexPetRuntime(options) {
   const frameCount = name => config()._pet?.frame_map?.[STATES[name][0]]?.length || STATES[name][1]
   const speed = () => Math.max(.4, Math.min(2, Number(config().speed) || 1))
   const walking = name => name === 'right' || name === 'left'
+  const verticalThreshold = d => Math.max(4, Math.min(24, d.spriteHeight * .15, (d.height - d.spriteHeight) * .2))
+  const pointerTargetY = d => Math.max(0, Math.min(pointer.y - d.spriteHeight / 2, d.height - d.spriteHeight))
   const frameMs = name => walking(name) ? 70 / speed() : 120
   const dimensions = () => {
     const bounds = options.bounds?.() || { width: 640, height: 360 }
@@ -57,8 +59,8 @@ export function createCodexPetRuntime(options) {
         if (Math.abs(dx) > d.size * .7) tracking = true
         if (Math.abs(dx) < d.size * .3) tracking = false
         if (tracking) targetVx = Math.sign(dx) * Math.min(moveSpeed, Math.max(0, Math.abs(dx) - d.size * .3) * 4)
-        const targetY = pointer.y - d.spriteHeight / 2
-        if (!jump && elapsed >= followHopAfter && Math.abs(targetY - pet.anchorY) > d.spriteHeight * .65) beginJump(targetY)
+        const targetY = pointerTargetY(d)
+        if (!jump && elapsed >= followHopAfter && Math.abs(targetY - pet.anchorY) > verticalThreshold(d)) beginJump(targetY)
       } else if (!manual && config().auto_roam) {
         tracking = false
         targetVx = (pet.lookRight ? 1 : -1) * moveSpeed
@@ -159,7 +161,10 @@ export function createCodexPetRuntime(options) {
     playBehavior: name => name === 'rest' ? playAction('idle') : false,
     updateConfig(next) { localConfig = next; clampToBounds() },
     debugState: () => ({ action: state, surface: 'free', state: drag ? 'drag' : state, poseIndex: pose,
-      vx, targetY: jump?.to ?? pet.anchorY }),
+      vx, x: pet.anchorX, y: pet.anchorY, pointerReceived: Boolean(pointer),
+      followMouse: Boolean(config().follow_mouse), jumping: Boolean(jump),
+      verticalThreshold: verticalThreshold(dimensions()),
+      targetY: jump?.to ?? (pointer && config().follow_mouse ? pointerTargetY(dimensions()) : pet.anchorY) }),
     handlePointerMove(point) { pointer = point }, handlePointerLeave() { pointer = null },
     startDrag(point) {
       if (!point) return

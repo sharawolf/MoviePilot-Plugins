@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { u as unwrap } from '../../../plugins.v3/agentmascot/dist/assets/provider-mBbtEwEX.js';
 import { moviePilotApiUrl, loadMoviePilotPluginConfig, startAgentMascotPatchEntry, createMoviePilotAgentEntry } from '../../../plugins.v3/agentmascot/dist/assets/agentmascot-loader.js';
 
@@ -37,6 +39,9 @@ test('injected client keeps the instance ID and public fallback needs no token',
 
 function fakeEnv() {
   const nodes = new Map();
+  const events = new Map();
+  const frames = new Map();
+  const logs = [];
   const intervals = new Set();
   const listeners = new Set();
   let serial = 0;
@@ -51,17 +56,98 @@ function fakeEnv() {
   const document = {
     querySelector: selector => selector === '.agent-assistant-fab' ? native : selector === '.agent-assistant-fab__trigger' ? trigger : null,
     querySelectorAll: () => [], getElementById: id => nodes.get(id),
-    createElement: element, addEventListener() {}, removeEventListener() {},
+    createElement: element,
+    addEventListener(name, fn, options) { events.set(name, { fn, options }); },
+    removeEventListener(name) { events.delete(name); },
     body: { appendChild: e => nodes.set(e.id, e) }, head: { appendChild: e => nodes.set(e.id, e) },
   };
   const env = { document, innerWidth: 1200, innerHeight: 800, location: { origin: 'https://mp.test' },
     performance: { now: () => 10 }, getComputedStyle: () => ({}),
     MutationObserver: class { observe() {} disconnect() {} },
     setInterval: () => { intervals.add(++serial); return serial; }, clearInterval: id => intervals.delete(id),
-    setTimeout: () => ++serial, clearTimeout() {}, requestAnimationFrame: () => ++serial, cancelAnimationFrame() {},
+    setTimeout: () => ++serial, clearTimeout() {},
+    requestAnimationFrame: fn => { frames.set(++serial, fn); return serial; },
+    cancelAnimationFrame: id => frames.delete(id),
+    console: Object.fromEntries(['info', 'warn', 'error'].map(level => [level, (...args) => logs.push({ level, args })])),
     addEventListener: event => listeners.add(event), removeEventListener: event => listeners.delete(event) };
-  return { env, nodes, intervals, listeners, classes, clicks: () => clicks };
+  return { env, nodes, intervals, listeners, classes, events, frames, logs, clicks: () => clicks,
+    move(x, y) { events.get('pointermove').fn({ clientX: x, clientY: y }); },
+    tick(time) { const [id, fn] = frames.entries().next().value; frames.delete(id); fn(time); },
+    y() { return Number(nodes.get('agentmascot-global-root').style.transform.match(/translate3d\([^,]+, ([^p]+)px/)[1]); },
+  };
 }
+
+test('global DOM entry follows modest vertical moves at the live 2x scale in both directions', async () => {
+  const f = fakeEnv();
+  const id = `pet_${'a'.repeat(32)}`;
+  const handle = startAgentMascotPatchEntry(f.env, { api: { get: async () => ({ success: true, message: '', data: {
+    config: { enabled: true, mascot: id, scale: 2, speed: 2, follow_mouse: true, auto_roam: true },
+    pet: { id, version: 2, rows: 11, sprite_url: '/sprite.png' },
+  } }) } });
+  await flush();
+  f.move(276, 224); // target top 120, just 60 px above the initial height.
+  assert.equal(f.events.get('pointermove').options.capture, true);
+  for (let i = 0; i <= 90; i++) f.tick(i * 1000 / 60);
+  assert.ok(Math.abs(f.y() - 120) < 1, `upward landing: ${f.y()}`);
+  f.move(276, 304); // target top 200, 80 px below.
+  for (let i = 91; i <= 180; i++) f.tick(i * 1000 / 60);
+  assert.ok(Math.abs(f.y() - 200) < 1, `downward landing: ${f.y()}`);
+  assert.equal(handle.getState().motion.pointerReceived, true);
+  assert.equal(handle.getState().motion.verticalThreshold, 24);
+  const count = f.logs.length;
+  await handle.sync(); await handle.sync();
+  assert.equal(f.logs.length, count, 'unchanged config and animation frames do not flood logs');
+  handle.stop();
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.events.size, 0);
+});
+
+test('classic loader runs the same vertical-follow runtime and exposes its build revision', async () => {
+  const f = fakeEnv();
+  const id = `pet_${'b'.repeat(32)}`;
+  f.env.URL = URL;
+  f.env.fetch = async () => ({ ok: true, json: async () => ({ success: true, message: '', data: {
+    config: { enabled: true, mascot: id, scale: 2, speed: 2, follow_mouse: true, auto_roam: false },
+    pet: { id, version: 2, rows: 11, sprite_url: '/sprite.png' },
+  } }) });
+  runInNewContext(readFileSync(new URL('../../../plugins.v3/agentmascot/dist/assets/agentmascot-loader.global.js', import.meta.url), 'utf8'), f.env);
+  await flush();
+  const handle = f.env.__AgentMascotGlobalLoader;
+  assert.match(handle.revision, /^[a-f0-9]{16}$/);
+  f.move(276, 224);
+  for (let i = 0; i <= 90; i++) f.tick(i * 1000 / 60);
+  assert.ok(Math.abs(f.y() - 120) < 1);
+  handle.stop();
+});
+
+test('global loader logs configuration failure once and reports recovery', async () => {
+  const f = fakeEnv();
+  let fail = true;
+  const handle = startAgentMascotPatchEntry(f.env, { api: { get: async () => {
+    if (fail) throw new Error('offline');
+    return envelope({ enabled: false });
+  } } });
+  await flush();
+  await handle.sync(); await handle.sync();
+  assert.equal(f.logs.filter(item => item.level === 'error').length, 1);
+  assert.equal(handle.getState().error, 'offline');
+  fail = false; await handle.sync();
+  assert.equal(handle.getState().error, null);
+  assert.ok(f.logs.some(item => item.args[0].includes('已恢复')));
+  handle.stop();
+});
+
+test('a legacy global handle is replaced even when its plugin ID matches', async () => {
+  const f = fakeEnv();
+  let stops = 0;
+  const legacy = { pluginId: 'AgentMascot', stop: () => stops++ };
+  f.env.__AgentMascotGlobalLoader = legacy;
+  const handle = startAgentMascotPatchEntry(f.env, { api: { get: async () => envelope({ enabled: false }) } });
+  await flush();
+  assert.notEqual(handle, legacy);
+  assert.equal(stops, 1);
+  handle.stop();
+});
 
 test('global mascot starts once, disables cleanly, and can start again', async () => {
   const f = fakeEnv();

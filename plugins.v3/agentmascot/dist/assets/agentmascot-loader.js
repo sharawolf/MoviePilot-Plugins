@@ -1,10 +1,12 @@
-import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js';
-import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls, applyMascotImage } from './mascot-runtime.js';
-import { u as unwrapResponse } from './provider-mBbtEwEX.js';
+import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js?v=d8fd367dcd3d3283';
+import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls, applyMascotImage } from './mascot-runtime.js?v=d8fd367dcd3d3283';
+import { u as unwrapResponse } from './provider-mBbtEwEX.js?v=d8fd367dcd3d3283';
 
 const ENTRY_SELECTOR = '.agent-assistant-fab';
 const TRIGGER_SELECTOR = '.agent-assistant-fab__trigger';
 const PANEL_SELECTOR = '.agent-assistant-panel';
+// Replaced with a content digest in both distribution entry points at build time.
+const RUNTIME_REVISION = 'd8fd367dcd3d3283';
 
 function nativeAgentEntryStyle(hiddenClass) {
   return `
@@ -248,7 +250,7 @@ function createGlobalDomAdapter(options = {}) {
     crop.append(img);
     root.append(crop, shadow);
     env.document.body.appendChild(root);
-    env.document.addEventListener('pointermove', onPointerMove, { passive: true });
+    env.document.addEventListener('pointermove', onPointerMove, { passive: true, capture: true });
     root.addEventListener('pointerdown', startDrag);
     root.addEventListener('pointermove', onDrag);
     root.addEventListener('pointerup', endDrag);
@@ -257,7 +259,7 @@ function createGlobalDomAdapter(options = {}) {
   }
 
   function unmount() {
-    env.document.removeEventListener('pointermove', onPointerMove);
+    env.document.removeEventListener('pointermove', onPointerMove, true);
     root?.remove();
     root = null;
     img = null;
@@ -309,10 +311,14 @@ const CONFIG_POLL_MS = 15000;
 function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   const pluginId = options.pluginId || PLUGIN_ID;
   const previous = env.__AgentMascotGlobalLoader;
-  if (previous?.pluginId === pluginId) return previous
-  previous?.stop();
+  if (previous?.pluginId === pluginId && previous.revision === RUNTIME_REVISION) return previous
+  previous?.stop?.();
   let stopped = false;
   let syncing = false;
+  let lastConfigLog = '';
+  let lastError = '';
+  const log = (level, message, detail) => env.console?.[level]?.(`[AgentMascot] ${message}`, detail);
+  if (previous) log('info', '替换旧桌宠运行器', { previous: previous.revision || 'legacy', revision: RUNTIME_REVISION });
 
   let config = { ...DEFAULT_CONFIG };
   let configTimer = 0;
@@ -356,6 +362,15 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   async function loadConfig() {
     config = await loadMoviePilotPluginConfig(pluginId, { ...options, env });
     runtime.updateConfig(config);
+    const detail = { pluginId, revision: RUNTIME_REVISION, enabled: config.enabled,
+      mascot: config.mascot, renderer: isCustomPet(config.mascot) ? 'codex-pet' : 'builtin',
+      followMouse: config.follow_mouse, autoRoam: config.auto_roam, scale: config.scale, speed: config.speed,
+      assetAvailable: !isCustomPet(config.mascot) || Boolean(config._pet) };
+    const signature = JSON.stringify(detail);
+    if (signature !== lastConfigLog) {
+      log(detail.assetAvailable ? 'info' : 'warn', '桌宠页面配置已应用', detail);
+      lastConfigLog = signature;
+    }
     return config
   }
 
@@ -369,6 +384,7 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
     agentEntry.hide();
     runtime.start();
     mounted = true;
+    log('info', '全局桌宠已挂载', { revision: RUNTIME_REVISION });
   }
 
   function unmount() {
@@ -377,6 +393,7 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
     agentEntry.destroy();
     adapter.unmount();
     mounted = false;
+    log('info', '全局桌宠已卸载');
   }
 
   async function syncFromConfig() {
@@ -392,9 +409,13 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
       } else {
         unmount();
       }
+      if (lastError) log('info', '全局入口配置读取已恢复');
+      lastError = '';
     } catch (error) {
       unmount();
-      console.debug('[AgentMascot] 全局入口配置读取失败', error);
+      const message = String(error?.message || error);
+      if (lastError !== message) log('error', '全局入口配置读取失败', message);
+      lastError = message;
     } finally {
       syncing = false;
     }
@@ -406,12 +427,17 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
 
   const handle = {
     pluginId,
+    revision: RUNTIME_REVISION,
     sync: syncFromConfig,
     getState() {
       return {
         mounted,
         syncing,
         stopped,
+        revision: RUNTIME_REVISION,
+        renderer: isCustomPet(config.mascot) ? 'codex-pet' : 'builtin',
+        motion: runtime.debugState(),
+        error: lastError || null,
         nativeEntryAvailable: Boolean(env.document.querySelector(TRIGGER_SELECTOR)),
       }
     },
@@ -428,4 +454,4 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   return handle
 }
 
-export { startAgentMascotPatchEntry, loadMoviePilotPluginConfig, moviePilotApiUrl, createMoviePilotAgentEntry };
+export { startAgentMascotPatchEntry, loadMoviePilotPluginConfig, moviePilotApiUrl, createMoviePilotAgentEntry, RUNTIME_REVISION };

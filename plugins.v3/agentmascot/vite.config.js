@@ -4,9 +4,9 @@ import federation from '@originjs/vite-plugin-federation'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolve, basename } from 'node:path'
+import { runtimeFiles, runtimeRevision, stampRuntime } from './build-runtime.mjs'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
-const runtimeFiles = ['runtime-BCybTabx.js', 'agentmascot-loader.js', 'provider-mBbtEwEX.js', 'plugin-entry.js', 'mascot-runtime.js', 'codex-pet.js']
 
 export default defineConfig({
   // Federation 1.4.1 needs a root base to emit imports relative to remoteEntry.
@@ -27,7 +27,7 @@ export default defineConfig({
       name: 'preserve-mascot-runtime',
       generateBundle(_, bundle) {
         for (const filename of runtimeFiles) {
-          this.emitFile({ type: 'asset', fileName: `assets/${filename}`, source: readFileSync(resolve(root, 'runtime', filename)) })
+          this.emitFile({ type: 'asset', fileName: `assets/${filename}`, source: stampRuntime(readFileSync(resolve(root, 'runtime', filename), 'utf8')) })
         }
         for (const output of Object.values(bundle)) {
           if (output.type === 'chunk') output.code = output.code.replace(/[ \t]+(?=\r?$)/gm, '')
@@ -39,7 +39,7 @@ export default defineConfig({
     outDir: 'dist', emptyOutDir: true, target: 'esnext', minify: false,
     rollupOptions: {
       external: runtimeFiles.map(filename => `../runtime/${filename}`),
-      output: { paths: id => runtimeFiles.includes(basename(id)) ? `./assets/${basename(id)}` : id },
+      output: { paths: id => runtimeFiles.includes(basename(id)) ? `./assets/${basename(id)}?v=${runtimeRevision}` : id },
     },
   },
 })

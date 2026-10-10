@@ -3,9 +3,24 @@ import test from 'node:test'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
+import { runtimeRevision, runtimeFiles } from '../../../plugins.v3/agentmascot/build-runtime.mjs'
 
 const plugin = new URL('../../../plugins.v3/agentmascot/', import.meta.url)
 const assets = new URL('dist/assets/', plugin)
+
+test('all runtime imports and both entry points use the current content revision', () => {
+  for (const filename of readdirSync(assets).filter(name => name.endsWith('.js'))) {
+    const code = readFileSync(new URL(filename, assets), 'utf8')
+    for (const match of code.matchAll(/['"]\.{1,2}\/([^'"?]+)(\?[^'"]*)?['"]/g)) {
+      if (runtimeFiles.includes(match[1].split('/').pop())) assert.equal(match[2], `?v=${runtimeRevision}`, filename)
+    }
+  }
+  for (const filename of ['agentmascot-loader.js', 'agentmascot-loader.global.js']) {
+    const code = readFileSync(new URL(filename, assets), 'utf8')
+    assert.ok(code.includes(runtimeRevision))
+    assert.ok(!code.includes('__AGENTMASCOT_RUNTIME_REVISION__'))
+  }
+})
 
 test('built federation exposes load with host Vue and resolve their styles', async () => {
   const require = createRequire(new URL('package.json', plugin))
