@@ -11,15 +11,17 @@
   },
   "type": "module",
   "scripts": {
+    "build": "vite build",
+    "test": "node --test ../../tests/v3/agentmascot/test_runtime.mjs ../../tests/v3/agentmascot/test_ui.mjs ../../tests/v3/agentmascot/test_components.mjs ../../tests/v3/agentmascot/test_bundle.mjs",
     "check:runtime": "node --check dist/assets/agentmascot-loader.js"
   },
   "dependencies": {
-    "vue": "^3.5.13",
+    "vue": "3.5.39",
     "vuetify": "3.7.3"
   },
   "devDependencies": {
-    "@originjs/vite-plugin-federation": "^1.4.1",
-    "@vitejs/plugin-vue": "^5.0.4",
-    "vite": "^5.4.11"
+    "@originjs/vite-plugin-federation": "1.4.1",
+    "@vitejs/plugin-vue": "5.2.4",
+    "vite": "5.4.21"
   }
 }

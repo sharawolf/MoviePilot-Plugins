@@ -1,18 +1,18 @@
 const currentImports = {};
       const exportSet = new Set(['Module', '__esModule', 'default', '_export_sfc']);
       let moduleMap = {
-"./Page":()=>{
-      dynamicLoadingCss(["__federation_expose_Page-Du_GEcGA.css","__federation_expose_AppPage-DR3XcnCx.css"], false, './Page');
-      return __federation_import('./__federation_expose_Page-BFQOQvsg.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./Config":()=>{
-      dynamicLoadingCss(["__federation_expose_AppPage-DR3XcnCx.css"], false, './Config');
-      return __federation_import('./__federation_expose_Config-CsIZalmn.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["PluginWorkspace-fhlpYOWe.css"], false, './Config');
+      return __federation_import('./__federation_expose_Config-BsqKd3_O.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+"./Page":()=>{
+      dynamicLoadingCss(["PluginWorkspace-fhlpYOWe.css"], false, './Page');
+      return __federation_import('./__federation_expose_Page-vrJ5VU73.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./AppPage":()=>{
-      dynamicLoadingCss(["__federation_expose_AppPage-DR3XcnCx.css"], false, './AppPage');
-      return __federation_import('./__federation_expose_AppPage-CmO8LBME.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["PluginWorkspace-fhlpYOWe.css"], false, './AppPage');
+      return __federation_import('./__federation_expose_AppPage-Bj5cHQzl.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./PluginEntry":()=>{
       dynamicLoadingCss([], false, './PluginEntry');
-      return __federation_import('./__federation_expose_PluginEntry-DxxDOfvF.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
+      return __federation_import('./__federation_expose_PluginEntry-CW1_2yKa.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
       const seen = {};
       const dynamicLoadingCss = (cssFilePaths, dontAppendStylesToHead, exposeItemName) => {
         const metaUrl = import.meta.url;

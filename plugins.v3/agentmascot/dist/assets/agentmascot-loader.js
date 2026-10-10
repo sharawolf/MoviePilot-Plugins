@@ -403,6 +403,14 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   const handle = {
     pluginId,
     sync: syncFromConfig,
+    getState() {
+      return {
+        mounted,
+        syncing,
+        stopped,
+        nativeEntryAvailable: Boolean(env.document.querySelector(TRIGGER_SELECTOR)),
+      }
+    },
     stop() {
       stopped = true;
       env.clearInterval(configTimer);

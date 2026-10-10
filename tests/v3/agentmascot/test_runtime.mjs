@@ -71,11 +71,14 @@ test('global mascot starts once, disables cleanly, and can start again', async (
   await flush();
   assert.ok(f.nodes.has('agentmascot-global-root'));
   assert.ok(f.classes.has('agentmascot-native-hidden'));
+  assert.equal(first.getState().mounted, true);
+  assert.equal(first.getState().nativeEntryAvailable, true);
   assert.equal(startAgentMascotPatchEntry(f.env, options), first);
   enabled = false;
   await first.sync();
   assert.equal(f.nodes.has('agentmascot-global-root'), false);
   assert.equal(f.classes.size, 0);
+  assert.equal(first.getState().mounted, false);
   first.stop(); first.stop();
   assert.equal(f.intervals.size, 0);
   assert.equal(f.listeners.size, 0);
