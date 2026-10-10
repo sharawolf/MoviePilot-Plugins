@@ -2333,44 +2333,101 @@
     const config = () => options.getConfig?.() || localConfig;
     const initialPet = { anchorX: 80, anchorY: 180, lookRight: true, ...options.initialPet };
     const pet = { ...initialPet };
-    let animation = 0, running = false, previous = 0, elapsed = 0;
+    let animation = 0, running = false, previous = null, elapsed = 0;
     let manual = null, pointer = null, drag = null, suppressUntil = 0;
-    let state = "idle", pose2 = 0;
+    let state = "idle", pose2 = 0, poseElapsed = 0, vx = 0;
+    let jump = null, tracking = false, nextHopAt = 6500, followHopAfter = 0, restUntil = 0;
     const frameCount = (name) => config()._pet?.frame_map?.[STATES[name][0]]?.length || STATES[name][1];
+    const speed = () => Math.max(0.4, Math.min(2, Number(config().speed) || 1));
+    const walking = (name) => name === "right" || name === "left";
+    const frameMs = (name) => walking(name) ? 70 / speed() : 120;
     const dimensions = () => {
       const bounds = options.bounds?.() || { width: 640, height: 360 };
       const size = Math.min(96 * (config().scale || 1), Math.max(24, bounds.width - 16), Math.max(24, (bounds.height - 16) * 192 / 208));
       return { ...bounds, size, spriteHeight: size * 208 / 192 };
     };
-    function clampToBounds() {
-      const bounds = dimensions();
+    function clampToBounds(bounds = dimensions()) {
       pet.anchorX = Math.max(0, Math.min(pet.anchorX, bounds.width - bounds.size));
       pet.anchorY = Math.max(0, Math.min(pet.anchorY, bounds.height - bounds.spriteHeight));
     }
+    function setState(next) {
+      if (state !== next && !(walking(state) && walking(next))) poseElapsed = 0;
+      state = next;
+    }
+    function beginJump(targetY = pet.anchorY) {
+      const d = dimensions();
+      targetY = Math.max(0, Math.min(targetY, d.height - d.spriteHeight));
+      jump = {
+        start: elapsed,
+        from: pet.anchorY,
+        to: targetY,
+        height: Math.min(96, d.size * 0.65, pet.anchorY, targetY),
+        duration: 700 / Math.sqrt(speed())
+      };
+      nextHopAt = elapsed + jump.duration + 6e3;
+      followHopAfter = elapsed + jump.duration + 500;
+      setState("jumping");
+      pose2 = 0;
+    }
     function update(dt) {
       elapsed += dt;
-      clampToBounds();
+      const d = dimensions();
+      clampToBounds(d);
       if (manual && elapsed >= manual.until) manual = null;
-      state = manual?.name || "idle";
-      if (!drag && !manual) {
-        const d = dimensions();
-        const delta = pointer && config().follow_mouse ? pointer.x - pet.anchorX - d.size / 2 : 0;
-        const moving = Math.abs(delta) > d.size || !pointer && config().auto_roam && elapsed % 1e4 < 4500;
-        if (moving) {
-          if (delta) pet.lookRight = delta > 0;
-          if (pet.anchorX <= 0) pet.lookRight = true;
-          if (pet.anchorX >= d.width - d.size) pet.lookRight = false;
-          pet.anchorX += (pet.lookRight ? 1 : -1) * dt * 0.055 * (config().speed || 1);
-          state = pet.lookRight ? "right" : "left";
-          clampToBounds();
+      const moveSpeed = 65 * speed() * Math.sqrt(d.size / 96);
+      let targetVx = 0;
+      const follow = pointer && config().follow_mouse;
+      if (!drag && elapsed >= restUntil) {
+        if (manual && walking(manual.name)) targetVx = (manual.name === "right" ? 1 : -1) * moveSpeed;
+        else if (!manual && follow) {
+          const dx = pointer.x - pet.anchorX - d.size / 2;
+          if (Math.abs(dx) > d.size * 0.7) tracking = true;
+          if (Math.abs(dx) < d.size * 0.3) tracking = false;
+          if (tracking) targetVx = Math.sign(dx) * Math.min(moveSpeed, Math.max(0, Math.abs(dx) - d.size * 0.3) * 4);
+          const targetY = pointer.y - d.spriteHeight / 2;
+          if (!jump && elapsed >= followHopAfter && Math.abs(targetY - pet.anchorY) > d.spriteHeight * 0.65) beginJump(targetY);
+        } else if (!manual && config().auto_roam) {
+          tracking = false;
+          targetVx = (pet.lookRight ? 1 : -1) * moveSpeed;
+        }
+        if (!manual && !jump && config().auto_roam && elapsed >= nextHopAt) beginJump();
+      }
+      if (drag) vx = 0;
+      else {
+        const decay = Math.exp(-dt / 110), before = vx;
+        vx = targetVx + (vx - targetVx) * decay;
+        pet.anchorX += (targetVx * dt + (before - targetVx) * 110 * (1 - decay)) / 1e3;
+        const edge = Math.max(0, d.width - d.size);
+        if (pet.anchorX <= 0 && vx < 0) {
+          vx = Math.abs(vx);
+          pet.lookRight = true;
+        } else if (pet.anchorX >= edge && vx > 0) {
+          vx = -Math.abs(vx);
+          pet.lookRight = false;
+        } else if (Math.abs(vx) > 2) pet.lookRight = vx > 0;
+      }
+      let jumpProgress = 0;
+      if (jump) {
+        const maxY = Math.max(0, d.height - d.spriteHeight);
+        jump.from = Math.min(jump.from, maxY);
+        jump.to = Math.min(jump.to, maxY);
+        jump.height = Math.min(jump.height, jump.from, jump.to);
+        jumpProgress = Math.min(1, (elapsed - jump.start) / jump.duration);
+        const t = jumpProgress, blend = t * t * (3 - 2 * t);
+        pet.anchorY = jump.from + (jump.to - jump.from) * blend - 4 * jump.height * t * (1 - t);
+        if (t === 1) {
+          pet.anchorY = jump.to;
+          jump = null;
         }
       }
-      if (drag) state = pet.lookRight ? "right" : "left";
-      pose2 = Math.floor((elapsed - (manual?.start || 0)) / 120) % frameCount(state);
+      clampToBounds(d);
+      setState(jump ? "jumping" : drag ? pet.lookRight ? "right" : "left" : manual?.name || (Math.abs(vx) > 2 ? pet.lookRight ? "right" : "left" : "idle"));
+      poseElapsed += dt * (walking(state) ? Math.min(1, Math.abs(vx) / moveSpeed) : 1);
+      pose2 = jump ? Math.min(frameCount(state) - 1, Math.floor(jumpProgress * frameCount(state))) : Math.floor(poseElapsed / frameMs(state)) % frameCount(state);
     }
     function tick(time) {
       if (!running) return;
-      const dt = previous ? Math.max(0, Math.min(48, time - previous)) : 16;
+      const dt = previous === null ? 1e3 / 60 : Math.max(0, Math.min(64, time - previous));
       previous = time;
       update(dt);
       options.onUpdate?.();
@@ -2379,7 +2436,7 @@
     function start() {
       if (running) return;
       running = true;
-      previous = 0;
+      previous = null;
       animation = scheduler.requestAnimationFrame(tick);
     }
     function stop() {
@@ -2390,8 +2447,11 @@
     function playAction(name) {
       name = ALIASES[name] || name;
       if (!STATES[name]) return false;
-      manual = { name, start: elapsed, until: elapsed + frameCount(name) * 120 };
-      state = name;
+      jump = null;
+      if (name === "jumping") beginJump();
+      manual = { name, until: elapsed + (jump?.duration || frameCount(name) * frameMs(name)) };
+      setState(name);
+      poseElapsed = 0;
       pose2 = 0;
       options.onUpdate?.();
       return true;
@@ -2427,15 +2487,23 @@
           height: `${d.spriteHeight * (profile?.rows || 9)}px`,
           maxWidth: "none",
           objectFit: "fill",
-          left: `${-column * d.size}px`,
-          top: `${-row * d.spriteHeight}px`
+          left: "0",
+          top: "0",
+          willChange: "transform",
+          transform: `translate3d(${-column * d.size}px, ${-row * d.spriteHeight}px, 0)`
         }
       };
     }
     function resetPose() {
       manual = null;
+      jump = null;
+      pointer = null;
+      tracking = false;
+      vx = 0;
       state = "idle";
       pose2 = 0;
+      poseElapsed = 0;
+      nextHopAt = elapsed + 6500;
       pet.anchorX = initialPet.anchorX;
       pet.anchorY = initialPet.anchorY;
       clampToBounds();
@@ -2455,7 +2523,14 @@
         localConfig = next;
         clampToBounds();
       },
-      debugState: () => ({ action: state, surface: "free", state: drag ? "drag" : state, poseIndex: pose2 }),
+      debugState: () => ({
+        action: state,
+        surface: "free",
+        state: drag ? "drag" : state,
+        poseIndex: pose2,
+        vx,
+        targetY: jump?.to ?? pet.anchorY
+      }),
       handlePointerMove(point) {
         pointer = point;
       },
@@ -2463,7 +2538,12 @@
         pointer = null;
       },
       startDrag(point) {
-        if (point) drag = { x: point.x - pet.anchorX, y: point.y - pet.anchorY, startX: point.x, startY: point.y };
+        if (!point) return;
+        jump = null;
+        manual = null;
+        vx = 0;
+        tracking = false;
+        drag = { x: point.x - pet.anchorX, y: point.y - pet.anchorY, startX: point.x, startY: point.y };
       },
       moveDrag(point, dx = 0) {
         if (!drag || !point) return;
@@ -2476,6 +2556,9 @@
       },
       endDrag() {
         drag = null;
+        pointer = null;
+        restUntil = elapsed + 400;
+        nextHopAt = elapsed + 6500;
         clampToBounds();
         options.onUpdate?.();
       },
@@ -2484,6 +2567,27 @@
     };
   }
   const isCustomPet = (name) => /^pet_[0-9a-f]{32}$/.test(name || "");
+  const renderedImages = /* @__PURE__ */ new WeakMap();
+  function applyMascotImage(img, state) {
+    const previous = renderedImages.get(img) || { styles: {} };
+    if (previous.frame !== state.frame) img.src = state.frame;
+    const styles = {
+      position: "static",
+      width: "100%",
+      height: "100%",
+      maxWidth: "100%",
+      objectFit: "contain",
+      left: "0",
+      top: "0",
+      transform: "none",
+      willChange: "auto",
+      ...state.imageStyle
+    };
+    for (const [key, value] of Object.entries(styles)) {
+      if (previous.styles[key] !== value) img.style[key] = value;
+    }
+    renderedImages.set(img, { frame: state.frame, styles });
+  }
   function normalizeConfig(config = {}) {
     const result = normalizeConfig$1(config);
     if (isCustomPet(config?.mascot)) result.mascot = config.mascot;
@@ -2687,8 +2791,7 @@
       root.style.width = `${state.size}px`;
       root.style.height = `${state.height || state.size}px`;
       root.style.transform = `translate3d(${state.left}px, ${state.top}px, 0) scaleX(${state.flipX ?? (pet.lookRight ? -1 : 1)})`;
-      Object.assign(img.style, { position: "static", width: "100%", height: "100%", maxWidth: "100%", objectFit: "contain", left: "0", top: "0" }, state.imageStyle || {});
-      img.src = state.frame;
+      applyMascotImage(img, state);
       shadow.style.display = runtime().config().shadow ? "block" : "none";
     }
     function onPointerMove(event) {

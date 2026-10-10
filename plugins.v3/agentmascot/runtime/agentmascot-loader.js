@@ -1,5 +1,5 @@
 import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js';
-import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls } from './mascot-runtime.js';
+import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls, applyMascotImage } from './mascot-runtime.js';
 import { u as unwrapResponse } from './provider-mBbtEwEX.js';
 
 const ENTRY_SELECTOR = '.agent-assistant-fab';
@@ -156,8 +156,7 @@ function createGlobalDomAdapter(options = {}) {
     root.style.width = `${state.size}px`;
     root.style.height = `${state.height || state.size}px`;
     root.style.transform = `translate3d(${state.left}px, ${state.top}px, 0) scaleX(${state.flipX ?? (pet.lookRight ? -1 : 1)})`;
-    Object.assign(img.style, { position: 'static', width: '100%', height: '100%', maxWidth: '100%', objectFit: 'contain', left: '0', top: '0' }, state.imageStyle || {});
-    img.src = state.frame;
+    applyMascotImage(img, state);
     shadow.style.display = runtime().config().shadow ? 'block' : 'none';
   }
 

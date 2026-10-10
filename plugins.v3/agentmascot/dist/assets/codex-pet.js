@@ -11,44 +11,91 @@ export function createCodexPetRuntime(options) {
   const config = () => options.getConfig?.() || localConfig
   const initialPet = { anchorX: 80, anchorY: 180, lookRight: true, ...options.initialPet }
   const pet = { ...initialPet }
-  let animation = 0, running = false, previous = 0, elapsed = 0
+  let animation = 0, running = false, previous = null, elapsed = 0
   let manual = null, pointer = null, drag = null, suppressUntil = 0
-  let state = 'idle', pose = 0
+  let state = 'idle', pose = 0, poseElapsed = 0, vx = 0
+  let jump = null, tracking = false, nextHopAt = 6500, followHopAfter = 0, restUntil = 0
   const frameCount = name => config()._pet?.frame_map?.[STATES[name][0]]?.length || STATES[name][1]
+  const speed = () => Math.max(.4, Math.min(2, Number(config().speed) || 1))
+  const walking = name => name === 'right' || name === 'left'
+  const frameMs = name => walking(name) ? 70 / speed() : 120
   const dimensions = () => {
     const bounds = options.bounds?.() || { width: 640, height: 360 }
     const size = Math.min(96 * (config().scale || 1), Math.max(24, bounds.width - 16), Math.max(24, (bounds.height - 16) * 192 / 208))
     return { ...bounds, size, spriteHeight: size * 208 / 192 }
   }
-  function clampToBounds() {
-    const bounds = dimensions()
+  function clampToBounds(bounds = dimensions()) {
     pet.anchorX = Math.max(0, Math.min(pet.anchorX, bounds.width - bounds.size))
     pet.anchorY = Math.max(0, Math.min(pet.anchorY, bounds.height - bounds.spriteHeight))
   }
+  function setState(next) {
+    if (state !== next && !(walking(state) && walking(next))) poseElapsed = 0
+    state = next
+  }
+  function beginJump(targetY = pet.anchorY) {
+    const d = dimensions()
+    targetY = Math.max(0, Math.min(targetY, d.height - d.spriteHeight))
+    jump = { start: elapsed, from: pet.anchorY, to: targetY,
+      height: Math.min(96, d.size * .65, pet.anchorY, targetY), duration: 700 / Math.sqrt(speed()) }
+    nextHopAt = elapsed + jump.duration + 6000
+    followHopAfter = elapsed + jump.duration + 500
+    setState('jumping')
+    pose = 0
+  }
   function update(dt) {
     elapsed += dt
-    clampToBounds()
+    const d = dimensions()
+    clampToBounds(d)
     if (manual && elapsed >= manual.until) manual = null
-    state = manual?.name || 'idle'
-    if (!drag && !manual) {
-      const d = dimensions()
-      const delta = pointer && config().follow_mouse ? pointer.x - pet.anchorX - d.size / 2 : 0
-      const moving = Math.abs(delta) > d.size || (!pointer && config().auto_roam && elapsed % 10000 < 4500)
-      if (moving) {
-        if (delta) pet.lookRight = delta > 0
-        if (pet.anchorX <= 0) pet.lookRight = true
-        if (pet.anchorX >= d.width - d.size) pet.lookRight = false
-        pet.anchorX += (pet.lookRight ? 1 : -1) * dt * .055 * (config().speed || 1)
-        state = pet.lookRight ? 'right' : 'left'
-        clampToBounds()
+    const moveSpeed = 65 * speed() * Math.sqrt(d.size / 96)
+    let targetVx = 0
+    const follow = pointer && config().follow_mouse
+    if (!drag && elapsed >= restUntil) {
+      if (manual && walking(manual.name)) targetVx = (manual.name === 'right' ? 1 : -1) * moveSpeed
+      else if (!manual && follow) {
+        const dx = pointer.x - pet.anchorX - d.size / 2
+        if (Math.abs(dx) > d.size * .7) tracking = true
+        if (Math.abs(dx) < d.size * .3) tracking = false
+        if (tracking) targetVx = Math.sign(dx) * Math.min(moveSpeed, Math.max(0, Math.abs(dx) - d.size * .3) * 4)
+        const targetY = pointer.y - d.spriteHeight / 2
+        if (!jump && elapsed >= followHopAfter && Math.abs(targetY - pet.anchorY) > d.spriteHeight * .65) beginJump(targetY)
+      } else if (!manual && config().auto_roam) {
+        tracking = false
+        targetVx = (pet.lookRight ? 1 : -1) * moveSpeed
       }
+      if (!manual && !jump && config().auto_roam && elapsed >= nextHopAt) beginJump()
     }
-    if (drag) state = pet.lookRight ? 'right' : 'left'
-    pose = Math.floor((elapsed - (manual?.start || 0)) / 120) % frameCount(state)
+    if (drag) vx = 0
+    else {
+      // Integrate exponential acceleration analytically so 30/60/120 Hz agree.
+      const decay = Math.exp(-dt / 110), before = vx
+      vx = targetVx + (vx - targetVx) * decay
+      pet.anchorX += (targetVx * dt + (before - targetVx) * 110 * (1 - decay)) / 1000
+      const edge = Math.max(0, d.width - d.size)
+      if (pet.anchorX <= 0 && vx < 0) { vx = Math.abs(vx); pet.lookRight = true }
+      else if (pet.anchorX >= edge && vx > 0) { vx = -Math.abs(vx); pet.lookRight = false }
+      else if (Math.abs(vx) > 2) pet.lookRight = vx > 0
+    }
+    let jumpProgress = 0
+    if (jump) {
+      const maxY = Math.max(0, d.height - d.spriteHeight)
+      jump.from = Math.min(jump.from, maxY); jump.to = Math.min(jump.to, maxY)
+      jump.height = Math.min(jump.height, jump.from, jump.to)
+      jumpProgress = Math.min(1, (elapsed - jump.start) / jump.duration)
+      const t = jumpProgress, blend = t * t * (3 - 2 * t)
+      pet.anchorY = jump.from + (jump.to - jump.from) * blend - 4 * jump.height * t * (1 - t)
+      if (t === 1) { pet.anchorY = jump.to; jump = null }
+    }
+    clampToBounds(d)
+    setState(jump ? 'jumping' : drag ? (pet.lookRight ? 'right' : 'left')
+      : manual?.name || (Math.abs(vx) > 2 ? (pet.lookRight ? 'right' : 'left') : 'idle'))
+    poseElapsed += dt * (walking(state) ? Math.min(1, Math.abs(vx) / moveSpeed) : 1)
+    pose = jump ? Math.min(frameCount(state) - 1, Math.floor(jumpProgress * frameCount(state)))
+      : Math.floor(poseElapsed / frameMs(state)) % frameCount(state)
   }
   function tick(time) {
     if (!running) return
-    const dt = previous ? Math.max(0, Math.min(48, time - previous)) : 16
+    const dt = previous === null ? 1000 / 60 : Math.max(0, Math.min(64, time - previous))
     previous = time
     update(dt)
     options.onUpdate?.()
@@ -57,7 +104,7 @@ export function createCodexPetRuntime(options) {
   function start() {
     if (running) return
     running = true
-    previous = 0
+    previous = null
     animation = scheduler.requestAnimationFrame(tick)
   }
   function stop() {
@@ -68,8 +115,11 @@ export function createCodexPetRuntime(options) {
   function playAction(name) {
     name = ALIASES[name] || name
     if (!STATES[name]) return false
-    manual = { name, start: elapsed, until: elapsed + frameCount(name) * 120 }
-    state = name
+    jump = null
+    if (name === 'jumping') beginJump()
+    manual = { name, until: elapsed + (jump?.duration || frameCount(name) * frameMs(name)) }
+    setState(name)
+    poseElapsed = 0
     pose = 0
     options.onUpdate?.()
     return true
@@ -94,11 +144,13 @@ export function createCodexPetRuntime(options) {
       size: d.size, height: d.spriteHeight, left: pet.anchorX, top: pet.anchorY,
       frame: profile?.sprite_url || '', flipX: 1, row, column,
       imageStyle: { position: 'absolute', width: `${d.size * 8}px`, height: `${d.spriteHeight * (profile?.rows || 9)}px`,
-        maxWidth: 'none', objectFit: 'fill', left: `${-column * d.size}px`, top: `${-row * d.spriteHeight}px` },
+        maxWidth: 'none', objectFit: 'fill', left: '0', top: '0', willChange: 'transform',
+        transform: `translate3d(${-column * d.size}px, ${-row * d.spriteHeight}px, 0)` },
     }
   }
   function resetPose() {
-    manual = null; state = 'idle'; pose = 0
+    manual = null; jump = null; pointer = null; tracking = false; vx = 0
+    state = 'idle'; pose = 0; poseElapsed = 0; nextHopAt = elapsed + 6500
     pet.anchorX = initialPet.anchorX; pet.anchorY = initialPet.anchorY
     clampToBounds(); options.onUpdate?.()
   }
@@ -106,9 +158,14 @@ export function createCodexPetRuntime(options) {
     pet, config, start, stop, clampToBounds, renderState, resetPose, playAction,
     playBehavior: name => name === 'rest' ? playAction('idle') : false,
     updateConfig(next) { localConfig = next; clampToBounds() },
-    debugState: () => ({ action: state, surface: 'free', state: drag ? 'drag' : state, poseIndex: pose }),
+    debugState: () => ({ action: state, surface: 'free', state: drag ? 'drag' : state, poseIndex: pose,
+      vx, targetY: jump?.to ?? pet.anchorY }),
     handlePointerMove(point) { pointer = point }, handlePointerLeave() { pointer = null },
-    startDrag(point) { if (point) drag = { x: point.x - pet.anchorX, y: point.y - pet.anchorY, startX: point.x, startY: point.y } },
+    startDrag(point) {
+      if (!point) return
+      jump = null; manual = null; vx = 0; tracking = false
+      drag = { x: point.x - pet.anchorX, y: point.y - pet.anchorY, startX: point.x, startY: point.y }
+    },
     moveDrag(point, dx = 0) {
       if (!drag || !point) return
       pet.anchorX = point.x - drag.x; pet.anchorY = point.y - drag.y
@@ -116,7 +173,10 @@ export function createCodexPetRuntime(options) {
       if (Math.hypot(point.x - drag.startX, point.y - drag.startY) > 5) suppressUntil = Date.now() + 500
       clampToBounds(); options.onUpdate?.()
     },
-    endDrag() { drag = null; clampToBounds(); options.onUpdate?.() },
+    endDrag() {
+      drag = null; pointer = null; restUntil = elapsed + 400; nextHopAt = elapsed + 6500
+      clampToBounds(); options.onUpdate?.()
+    },
     shouldSuppressClick: () => Date.now() < suppressUntil,
     celebrate: () => playAction('waving'),
   }

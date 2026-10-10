@@ -1,5 +1,5 @@
 import { D as DEFAULT_CONFIG, V as VIEWPORT_PADDING, f as buildSurfaceLanes } from './runtime-BCybTabx.js';
-import { normalizeConfig, createMascotRuntime } from './mascot-runtime.js';
+import { normalizeConfig, createMascotRuntime, applyMascotImage } from './mascot-runtime.js';
 
 const ROOT_CLASS = 'agentmascot-plugin-root';
 const SHADOW_CLASS = 'agentmascot-plugin-shadow';
@@ -63,8 +63,7 @@ function render() {
     `translate3d(${state.left}px, ${state.top}px, 0)`,
     `scaleX(${state.flipX ?? (runtime.pet.lookRight ? -1 : 1)})`,
   ].join(' ');
-  img.src = state.frame;
-  Object.assign(img.style, { position: 'static', width: '100%', height: '100%', maxWidth: '100%', objectFit: 'contain', left: '0', top: '0' }, state.imageStyle || {});
+  applyMascotImage(img, state);
   if (shadow) shadow.style.display = runtime.config().shadow ? 'block' : 'none';
 }
 

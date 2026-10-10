@@ -2,6 +2,17 @@ import { n as builtinNormalize, e as createBuiltinRuntime, g as builtinProfile }
 import { createCodexPetRuntime } from './codex-pet.js';
 
 const isCustomPet = name => /^pet_[0-9a-f]{32}$/.test(name || '')
+const renderedImages = new WeakMap()
+function applyMascotImage(img, state) {
+  const previous = renderedImages.get(img) || { styles: {} }
+  if (previous.frame !== state.frame) img.src = state.frame
+  const styles = { position: 'static', width: '100%', height: '100%', maxWidth: '100%',
+    objectFit: 'contain', left: '0', top: '0', transform: 'none', willChange: 'auto', ...state.imageStyle }
+  for (const [key, value] of Object.entries(styles)) {
+    if (previous.styles[key] !== value) img.style[key] = value
+  }
+  renderedImages.set(img, { frame: state.frame, styles })
+}
 function normalizeConfig(config = {}) {
   const result = builtinNormalize(config)
   if (isCustomPet(config?.mascot)) result.mascot = config.mascot
@@ -50,4 +61,4 @@ function createMascotRuntime(options = {}) {
   return runtime
 }
 
-export { normalizeConfig, cloneConfig, createMascotRuntime, resolveMascotProfile, isCustomPet, petAssetUrls };
+export { normalizeConfig, cloneConfig, createMascotRuntime, resolveMascotProfile, isCustomPet, petAssetUrls, applyMascotImage };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createPetLibraryController } from '../../../plugins.v3/agentmascot/src/pet-library-controller.js'
-import { createMascotRuntime, cloneConfig, normalizeConfig, petAssetUrls } from '../../../plugins.v3/agentmascot/runtime/mascot-runtime.js'
+import { createMascotRuntime, cloneConfig, normalizeConfig, petAssetUrls, applyMascotImage } from '../../../plugins.v3/agentmascot/runtime/mascot-runtime.js'
 import { actionGroups } from '../../../plugins.v3/agentmascot/src/actions.js'
 
 const pet = { id: `pet_${'a'.repeat(32)}`, name: 'Sample', version: 2, rows: 11, icon: '', sprite_url: 'data:image/png;base64,test' }
@@ -172,4 +172,141 @@ test('imported frame maps play extra action frames and replace absent actions an
   h.runtime.handlePointerMove({ x: view.left + view.size / 2, y: view.top - 60 })
   assert.deepEqual([h.runtime.renderState().row, h.runtime.renderState().column], [0, 3])
   h.runtime.stop()
+})
+
+test('running cadence follows speed and travel is stable across display refresh rates', () => {
+  function run(speed, hz) {
+    const h = runtimeHarness()
+    h.resize({ width: 2400, height: 800 })
+    h.update({ ...h.config, speed, auto_roam: true, follow_mouse: false })
+    h.runtime.start()
+    let changes = 0, last = -1
+    for (let i = 0; i <= hz * 2; i++) {
+      h.tick(i * 1000 / hz)
+      const view = h.runtime.renderState()
+      if (view.column !== last) changes++
+      last = view.column
+    }
+    h.runtime.stop()
+    return { x: h.runtime.pet.anchorX, changes }
+  }
+  const slow = run(1, 60), fast = run(2, 60)
+  assert.ok(slow.changes >= 20, 'running no longer holds every frame for 120 ms')
+  assert.ok(fast.changes > slow.changes * 1.7)
+  assert.ok(fast.x - 80 > (slow.x - 80) * 1.9)
+  for (const hz of [30, 120]) assert.ok(Math.abs(run(1, hz).x - slow.x) < .1)
+})
+
+test('following decelerates smoothly and small pointer changes do not toggle running', () => {
+  const h = runtimeHarness()
+  h.runtime.start()
+  for (let i = 0; i < 90; i++) {
+    const view = h.runtime.renderState()
+    h.runtime.handlePointerMove({ x: view.left + view.size / 2 + 96 + (i % 2 ? -2 : 2), y: view.top + view.height / 2 })
+    h.tick(i * 1000 / 60)
+    if (i > 30) assert.ok(h.runtime.debugState().vx > 60)
+  }
+  const view = h.runtime.renderState(), before = h.runtime.debugState().vx
+  h.runtime.handlePointerMove({ x: view.left + view.size / 2, y: view.top + view.height / 2 })
+  h.tick(1500)
+  assert.ok(h.runtime.debugState().vx > 0 && h.runtime.debugState().vx < before)
+  for (let i = 91; i <= 150; i++) h.tick(i * 1000 / 60)
+  assert.ok(Math.abs(h.runtime.debugState().vx) < 1)
+  h.runtime.stop()
+})
+
+test('jump action follows an arc and lands at its launch height', () => {
+  const h = runtimeHarness(1, { anchorX: 100, anchorY: 180 })
+  h.runtime.playAction('jump')
+  h.runtime.start()
+  const heights = [], columns = []
+  for (let i = 0; i <= 54; i++) {
+    h.tick(i * 1000 / 60)
+    const view = h.runtime.renderState()
+    heights.push(view.top)
+    if (view.row === 4) columns.push(view.column)
+  }
+  assert.ok(Math.min(...heights) < 130)
+  assert.equal(heights.at(-1), 180)
+  assert.ok(columns.includes(0) && columns.includes(4))
+  assert.ok(columns.every((value, index) => index === 0 || value >= columns[index - 1]))
+  h.runtime.stop()
+})
+
+test('mouse following can hop upward and downward without leaving the viewport', () => {
+  const h = runtimeHarness()
+  h.runtime.start()
+  const first = h.runtime.renderState()
+  h.runtime.handlePointerMove({ x: first.left + first.size / 2, y: 40 + first.height / 2 })
+  for (let i = 0; i <= 90; i++) {
+    h.tick(i * 1000 / 60)
+    assert.ok(h.runtime.renderState().top >= 0)
+  }
+  assert.equal(h.runtime.renderState().top, 40)
+  h.runtime.handlePointerMove({ x: first.left + first.size / 2, y: 240 + first.height / 2 })
+  for (let i = 91; i <= 180; i++) {
+    h.tick(i * 1000 / 60)
+    const view = h.runtime.renderState()
+    assert.ok(view.top >= 0 && view.top + view.height <= 360)
+  }
+  assert.equal(h.runtime.renderState().top, 240)
+  h.runtime.stop()
+})
+
+test('autonomous roaming continues with following disabled and includes a hop', () => {
+  const h = runtimeHarness()
+  h.resize({ width: 2400, height: 600 })
+  h.update({ ...h.config, auto_roam: true, follow_mouse: false })
+  h.runtime.handlePointerMove({ x: 0, y: 0 })
+  h.runtime.start()
+  let before = 0, after = 0, airborne = false
+  for (let i = 0; i <= 450; i++) {
+    h.tick(i * 1000 / 60)
+    if (i === 280) before = h.runtime.pet.anchorX
+    if (i === 320) after = h.runtime.pet.anchorX
+    if (h.runtime.pet.anchorY < 170) airborne = true
+  }
+  assert.ok(after - before > 30, 'no forced stop after 4.5 seconds')
+  assert.ok(airborne)
+  assert.equal(h.runtime.pet.anchorY, 180)
+  h.runtime.stop()
+})
+
+test('dragging cancels a jump and pausing cannot advance a pending animation', () => {
+  const h = runtimeHarness()
+  h.runtime.playAction('jumping'); h.runtime.start()
+  for (let i = 0; i < 10; i++) h.tick(i * 16)
+  const view = h.runtime.renderState()
+  h.runtime.startDrag({ x: view.left + 10, y: view.top + 10 })
+  h.runtime.moveDrag({ x: 130, y: 90 }, 10); h.runtime.endDrag()
+  for (let i = 10; i < 60; i++) h.tick(i * 16)
+  assert.equal(h.runtime.pet.anchorY, 80)
+  h.runtime.playAction('jumping'); h.tick(1000); h.runtime.stop()
+  const stopped = h.runtime.renderState()
+  assert.equal(h.frames.size, 0)
+  assert.equal(h.runtime.renderState().top, stopped.top)
+  h.runtime.start(); h.tick(60000)
+  assert.ok(Math.abs(h.runtime.renderState().top - stopped.top) < 10)
+  h.runtime.stop()
+})
+
+test('atlas rendering reuses the image and changes only the crop transform', () => {
+  let srcWrites = 0, styleWrites = 0
+  const styles = {}, img = { set src(_value) { srcWrites++ },
+    style: new Proxy(styles, { set(target, key, value) { styleWrites++; target[key] = value; return true } }) }
+  const h = runtimeHarness()
+  const first = h.runtime.renderState()
+  applyMascotImage(img, first)
+  const writes = styleWrites
+  for (let i = 0; i < 120; i++) applyMascotImage(img, h.runtime.renderState())
+  assert.equal(srcWrites, 1)
+  assert.equal(styleWrites, writes)
+  h.runtime.playAction('working')
+  applyMascotImage(img, h.runtime.renderState())
+  assert.equal(srcWrites, 1)
+  assert.equal(styleWrites, writes + 1)
+  assert.match(styles.transform, /translate3d/)
+  applyMascotImage(img, { frame: 'builtin-frame' })
+  assert.equal(styles.transform, 'none')
+  assert.equal(styles.position, 'static')
 })
