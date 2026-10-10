@@ -103,6 +103,14 @@ def test_classic_loader_is_self_contained(client):
     assert result.returncode == 0, result.stderr
 
 
+def test_missing_loader_returns_native_error(client, plugin, tmp_path):
+    plugin._api._plugin_root = tmp_path
+    response = client.get("/loader")
+    assert response.status_code == 500
+    assert "AgentMascot loader failed" in response.text
+    assert str(tmp_path) not in response.text
+
+
 def test_original_asset_survives_and_metadata_agrees():
     import hashlib
     import app.plugins.agentmascot as module
