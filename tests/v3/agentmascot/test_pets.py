@@ -174,3 +174,28 @@ def test_storage_failure_returns_actionable_result(tmp_path, monkeypatch):
     monkeypatch.setattr(plugin._pets, "remove", fail)
     result = plugin.delete_pet("pet_" + "a" * 32)
     assert not result.success and "移除失败" in result.message
+
+
+@pytest.mark.parametrize("damage", [[], {"name": 42}, {"rows": 9}, {"frame_map": [[[99, 0]]]}])
+def test_damaged_metadata_does_not_break_settings(tmp_path, monkeypatch, damage):
+    monkeypatch.setattr(AgentMascot, "get_data_path", lambda self: tmp_path)
+    monkeypatch.setattr(AgentMascot, "update_config", lambda self, config: None)
+    pet, image = inspect_archive(archive())
+    store = PetStore(tmp_path)
+    store.save(pet, image)
+    broken = {**pet, **damage} if isinstance(damage, dict) else damage
+    (store.directory(pet["id"]) / "pet.json").write_text(json.dumps(broken), encoding="utf-8")
+    plugin = object.__new__(AgentMascot)
+    plugin.init_plugin({"enabled": True, "mascot": pet["id"]})
+    assert plugin.get_status().data.pets == []
+    assert plugin.get_public_status().data.pet is None
+    assert plugin.save_config_api({"mascot": "kurisu"}).success
+
+
+def test_missing_metadata_field_is_skipped(tmp_path):
+    pet, image = inspect_archive(archive())
+    store = PetStore(tmp_path)
+    store.save(pet, image)
+    del pet["name"]
+    (store.directory(pet["id"]) / "pet.json").write_text(json.dumps(pet), encoding="utf-8")
+    assert store.list() == []

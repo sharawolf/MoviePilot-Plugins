@@ -11,9 +11,11 @@ import stat
 import tempfile
 import threading
 import zipfile
+import zlib
 from pathlib import Path, PurePosixPath
 
 from PIL import Image, UnidentifiedImageError
+from app.sdk.logging import logger
 
 PET_LOCK = threading.RLock()
 PET_ID = re.compile(r"pet_[0-9a-f]{32}\Z")
@@ -91,7 +93,7 @@ def inspect_archive(payload: bytes) -> tuple[dict, bytes]:
                 raise PetImportError("未找到动画图，或动画图超过 20 MiB。")
             image_bytes = archive.read(member)
     except (zipfile.BadZipFile, zipfile.LargeZipFile, RuntimeError, NotImplementedError,
-            UnicodeError, json.JSONDecodeError, KeyError) as error:
+            UnicodeError, json.JSONDecodeError, KeyError, EOFError, zlib.error) as error:
         raise PetImportError("压缩包或 pet.json 无法读取，请重新导出。") from error
 
     try:
@@ -132,9 +134,40 @@ def inspect_archive(payload: bytes) -> tuple[dict, bytes]:
     return pet, image_bytes
 
 
+def validate_stored_pet(pet: object, pet_id: str) -> dict:
+    """Reject damaged stored records before they reach the API or sprite renderer."""
+    if not isinstance(pet, dict) or pet.get("id") != pet_id:
+        raise PetImportError("角色元数据损坏。")
+    if any(not isinstance(pet.get(key), str) for key in ("name", "description", "icon", "sha256", "mime")):
+        raise PetImportError("角色元数据字段缺失或类型错误。")
+    version, rows = pet.get("version"), pet.get("rows")
+    if (type(version) is not int or version not in (1, 2)
+            or type(rows) is not int or rows != (9 if version == 1 else 11)
+            or pet["mime"] not in {"image/png", "image/webp"}
+            or not re.fullmatch(r"[0-9a-f]{64}", pet["sha256"])
+            or not pet["name"].strip() or len(pet["name"]) > 80
+            or len(pet["description"]) > 500
+            or not pet["icon"].startswith("data:image/png;base64,")):
+        raise PetImportError("角色元数据内容无效。")
+    frame_map = pet.get("frame_map")
+    if frame_map is not None:
+        if not isinstance(frame_map, list) or len(frame_map) != rows:
+            raise PetImportError("角色动作映射损坏。")
+        for cells in frame_map:
+            if not isinstance(cells, list) or not 1 <= len(cells) <= 8:
+                raise PetImportError("角色动作映射损坏。")
+            for cell in cells:
+                if (not isinstance(cell, list) or len(cell) != 2
+                        or any(type(value) is not int for value in cell)
+                        or not 0 <= cell[0] < rows or not 0 <= cell[1] < 8):
+                    raise PetImportError("角色动作映射超出图集。")
+    return pet
+
+
 class PetStore:
     def __init__(self, root: Path):
         self.root = root / "pets"
+        self._invalid_reported = set()
 
     def directory(self, pet_id: str) -> Path:
         if not PET_ID.fullmatch(pet_id):
@@ -147,10 +180,12 @@ class PetStore:
     def get(self, pet_id: str) -> dict:
         directory = self.directory(pet_id)
         try:
-            pet = json.loads((directory / "pet.json").read_text("utf-8"))
-            if pet["id"] != pet_id or not (directory / "sprite").is_file():
-                raise PetImportError("角色文件不完整。")
-            return pet
+            with PET_LOCK:
+                metadata, sprite = directory / "pet.json", directory / "sprite"
+                if (metadata.is_symlink() or sprite.is_symlink() or not sprite.is_file()
+                        or metadata.stat().st_size > 262144 or sprite.stat().st_size > MAX_IMAGE):
+                    raise PetImportError("角色文件不完整。")
+                return validate_stored_pet(json.loads(metadata.read_text("utf-8")), pet_id)
         except (OSError, ValueError, KeyError) as error:
             raise PetImportError("角色不存在或文件损坏。") from error
 
@@ -162,7 +197,11 @@ class PetStore:
             if PET_ID.fullmatch(path.name):
                 try:
                     result.append(self.get(path.name))
+                    self._invalid_reported.discard(path.name)
                 except PetImportError:
+                    if path.name not in self._invalid_reported:
+                        logger.warning("跳过损坏的 Pet 角色记录: id=%s", path.name)
+                        self._invalid_reported.add(path.name)
                     continue
         return result
 
