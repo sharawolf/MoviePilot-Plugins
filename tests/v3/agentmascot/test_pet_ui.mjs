@@ -396,3 +396,90 @@ test('atlas rendering reuses the image and changes only the crop transform', () 
   assert.equal(styles.transform, 'none')
   assert.equal(styles.position, 'static')
 })
+
+const nativeActions = { idle: [0, 6], right: [1, 8], left: [2, 8], waving: [3, 4],
+  jumping: [4, 5], failed: [5, 8], waiting: [6, 6], working: [7, 6], review: [8, 6] }
+
+test('every v1/v2 action completes its frame cycle at speed limits and 30/60/120 Hz, including at an edge', () => {
+  for (const version of [1, 2]) for (const speed of [.4, 1, 2]) for (const hz of [30, 60, 120]) {
+    for (const [action, [row, count]] of Object.entries(nativeActions)) {
+      const h = runtimeHarness(version, { anchorX: action === 'left' ? 0 : action === 'right' ? 544 : 250, anchorY: 180 })
+      h.update({ ...h.config, speed, auto_roam: false, follow_mouse: false })
+      assert.equal(h.runtime.playAction(action), true)
+      h.runtime.start()
+      const seen = new Set([h.runtime.renderState().column])
+      for (let time = 0; time <= 2800; time += 1000 / hz) {
+        h.tick(time)
+        const view = h.runtime.renderState()
+        assert.ok(view.left >= 0 && view.left + view.size <= 640)
+        assert.ok(view.top >= 0 && view.top + view.height <= 360)
+        if (view.row === row) seen.add(view.column)
+      }
+      assert.deepEqual([...seen].sort((a, b) => a - b), Array.from({ length: count }, (_, i) => i),
+        `version=${version}, speed=${speed}, hz=${hz}, action=${action}`)
+      assert.equal(h.runtime.renderState().row, 0, 'one-shot action returns to idle')
+      h.runtime.stop()
+    }
+  }
+})
+
+test('all nine actions can interrupt one another without retaining the previous row or pose', () => {
+  for (const version of [1, 2]) for (const from of Object.keys(nativeActions)) {
+    for (const [to, [row]] of Object.entries(nativeActions)) {
+      const h = runtimeHarness(version, { anchorX: 250, anchorY: 180 })
+      h.update({ ...h.config, auto_roam: false, follow_mouse: false })
+      h.runtime.playAction(from); h.runtime.start()
+      for (let i = 0; i < 12; i++) h.tick(i * 16)
+      h.runtime.playAction(to)
+      assert.deepEqual([h.runtime.renderState().row, h.runtime.renderState().column], [row, 0], `${version}: ${from} -> ${to}`)
+      for (let i = 12; i < 240; i++) h.tick(i * 16)
+      assert.equal(h.runtime.renderState().row, 0, `${version}: ${from} -> ${to} finishes`)
+      assert.equal(h.runtime.debugState().jumping, false)
+      h.runtime.stop()
+    }
+  }
+})
+
+test('every action plays the complete imported sparse frame map, including missing-action fallbacks', () => {
+  const frame_map = Array.from({ length: 11 }, (_, row) => row < 9
+    ? [[row, 1], [row, 3], [row, 6]] : Array.from({ length: 8 }, () => [0, 1]))
+  frame_map[5] = frame_map[0]
+  for (const [action, [row]] of Object.entries(nativeActions)) {
+    const h = runtimeHarness(2, { anchorX: 250, anchorY: 180 })
+    h.update({ ...h.config, follow_mouse: false, auto_roam: false,
+      _pet: { ...h.config._pet, frame_map } })
+    h.runtime.playAction(action); h.runtime.start()
+    const seen = new Set()
+    for (let i = 0; i < 200; i++) {
+      if (h.runtime.debugState().action === action) {
+        const frame = h.runtime.renderState()
+        seen.add(`${frame.row},${frame.column}`)
+      }
+      h.tick(i * 1000 / 120)
+    }
+    assert.deepEqual([...seen], frame_map[row].map(cell => cell.join(',')), action)
+    h.runtime.stop()
+  }
+})
+
+test('following a pointer at any viewport corner settles instead of bouncing between run directions', () => {
+  for (const scale of [.6, 1, 2, 4]) for (const [x, y] of [[0, 0], [0, 599], [799, 0], [799, 599]]) {
+    const h = runtimeHarness(2, { anchorX: 200, anchorY: 180 })
+    h.resize({ width: 800, height: 600 })
+    h.update({ ...h.config, scale, speed: 2, auto_roam: true })
+    h.runtime.handlePointerMove({ x, y }); h.runtime.start()
+    const positions = []
+    for (let i = 0; i < 1200; i++) {
+      h.tick(i * 1000 / 60)
+      if (i >= 1100) {
+        const state = h.runtime.debugState()
+        assert.equal(state.action, 'idle', `scale=${scale}, corner=${x},${y}`)
+        assert.equal(state.jumping, false)
+        assert.ok(Math.abs(state.vx) < 1)
+        positions.push(state.x)
+      }
+    }
+    assert.ok(Math.max(...positions) - Math.min(...positions) < .1)
+    h.runtime.stop()
+  }
+})

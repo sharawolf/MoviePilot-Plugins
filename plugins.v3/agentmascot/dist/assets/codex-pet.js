@@ -59,12 +59,14 @@ export function createCodexPetRuntime(options) {
       else if (!manual && follow) {
         const dx = pointer.x - pet.anchorX - d.size / 2
         const dy = pointer.y - pet.anchorY - d.spriteHeight / 2
+        const reachableX = Math.max(0, Math.min(pointer.x - d.size / 2, d.width - d.size))
+        const moveDx = reachableX - pet.anchorX
         const distance = Math.hypot(dx, dy)
         if (distance <= gazeRadius(d)) gazeLocked = true
         else if (distance > verticalThreshold(d)) gazeLocked = false
-        if (!gazeLocked && Math.abs(dx) > d.size * .7) tracking = true
-        if (gazeLocked || Math.abs(dx) < d.size * .3) tracking = false
-        if (tracking) targetVx = Math.sign(dx) * Math.min(moveSpeed, Math.max(0, Math.abs(dx) - d.size * .3) * 4)
+        if (!gazeLocked && Math.abs(moveDx) > d.size * .7) tracking = true
+        if (gazeLocked || Math.abs(moveDx) < d.size * .3) tracking = false
+        if (tracking) targetVx = Math.sign(moveDx) * Math.min(moveSpeed, Math.max(0, Math.abs(moveDx) - d.size * .3) * 4)
         const targetY = pointerTargetY(d)
         // Gaze uses distance to the pointer; landing still uses reachable viewport coordinates.
         if (!gazeLocked && !jump && elapsed >= followHopAfter
@@ -82,8 +84,9 @@ export function createCodexPetRuntime(options) {
       vx = targetVx + (vx - targetVx) * decay
       pet.anchorX += (targetVx * dt + (before - targetVx) * 110 * (1 - decay)) / 1000
       const edge = Math.max(0, d.width - d.size)
-      if (pet.anchorX <= 0 && vx < 0) { vx = Math.abs(vx); pet.lookRight = true }
-      else if (pet.anchorX >= edge && vx > 0) { vx = -Math.abs(vx); pet.lookRight = false }
+      const bounce = !follow && !manual
+      if (pet.anchorX <= 0 && vx < 0) { vx = bounce ? Math.abs(vx) : 0; pet.lookRight = true }
+      else if (pet.anchorX >= edge && vx > 0) { vx = bounce ? -Math.abs(vx) : 0; pet.lookRight = false }
       else if (Math.abs(vx) > 2) pet.lookRight = vx > 0
     }
     let jumpProgress = 0
@@ -99,7 +102,8 @@ export function createCodexPetRuntime(options) {
     clampToBounds(d)
     setState(jump ? 'jumping' : drag ? (pet.lookRight ? 'right' : 'left')
       : manual?.name || (Math.abs(vx) > 2 ? (pet.lookRight ? 'right' : 'left') : 'idle'))
-    poseElapsed += dt * (walking(state) ? Math.min(1, Math.abs(vx) / moveSpeed) : 1)
+    // Explicit previews play a full cycle even when the viewport prevents movement.
+    poseElapsed += dt * (walking(state) && !manual ? Math.min(1, Math.abs(vx) / moveSpeed) : 1)
     pose = jump ? Math.min(frameCount(state) - 1, Math.floor(jumpProgress * frameCount(state)))
       : Math.floor(poseElapsed / frameMs(state)) % frameCount(state)
   }

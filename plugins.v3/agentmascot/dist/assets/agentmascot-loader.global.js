@@ -2386,12 +2386,14 @@
         else if (!manual && follow) {
           const dx = pointer.x - pet.anchorX - d.size / 2;
           const dy = pointer.y - pet.anchorY - d.spriteHeight / 2;
+          const reachableX = Math.max(0, Math.min(pointer.x - d.size / 2, d.width - d.size));
+          const moveDx = reachableX - pet.anchorX;
           const distance = Math.hypot(dx, dy);
           if (distance <= gazeRadius(d)) gazeLocked = true;
           else if (distance > verticalThreshold(d)) gazeLocked = false;
-          if (!gazeLocked && Math.abs(dx) > d.size * 0.7) tracking = true;
-          if (gazeLocked || Math.abs(dx) < d.size * 0.3) tracking = false;
-          if (tracking) targetVx = Math.sign(dx) * Math.min(moveSpeed, Math.max(0, Math.abs(dx) - d.size * 0.3) * 4);
+          if (!gazeLocked && Math.abs(moveDx) > d.size * 0.7) tracking = true;
+          if (gazeLocked || Math.abs(moveDx) < d.size * 0.3) tracking = false;
+          if (tracking) targetVx = Math.sign(moveDx) * Math.min(moveSpeed, Math.max(0, Math.abs(moveDx) - d.size * 0.3) * 4);
           const targetY = pointerTargetY(d);
           if (!gazeLocked && !jump && elapsed >= followHopAfter && Math.abs(dy) > verticalThreshold(d) && Math.abs(targetY - pet.anchorY) > 4) beginJump(targetY);
         } else if (!manual && config().auto_roam) {
@@ -2406,11 +2408,12 @@
         vx = targetVx + (vx - targetVx) * decay;
         pet.anchorX += (targetVx * dt + (before - targetVx) * 110 * (1 - decay)) / 1e3;
         const edge = Math.max(0, d.width - d.size);
+        const bounce = !follow && !manual;
         if (pet.anchorX <= 0 && vx < 0) {
-          vx = Math.abs(vx);
+          vx = bounce ? Math.abs(vx) : 0;
           pet.lookRight = true;
         } else if (pet.anchorX >= edge && vx > 0) {
-          vx = -Math.abs(vx);
+          vx = bounce ? -Math.abs(vx) : 0;
           pet.lookRight = false;
         } else if (Math.abs(vx) > 2) pet.lookRight = vx > 0;
       }
@@ -2430,7 +2433,7 @@
       }
       clampToBounds(d);
       setState(jump ? "jumping" : drag ? pet.lookRight ? "right" : "left" : manual?.name || (Math.abs(vx) > 2 ? pet.lookRight ? "right" : "left" : "idle"));
-      poseElapsed += dt * (walking(state) ? Math.min(1, Math.abs(vx) / moveSpeed) : 1);
+      poseElapsed += dt * (walking(state) && !manual ? Math.min(1, Math.abs(vx) / moveSpeed) : 1);
       pose2 = jump ? Math.min(frameCount(state) - 1, Math.floor(jumpProgress * frameCount(state))) : Math.floor(poseElapsed / frameMs(state)) % frameCount(state);
     }
     function tick(time) {
@@ -2767,7 +2770,7 @@
   const ENTRY_SELECTOR = ".agent-assistant-fab";
   const TRIGGER_SELECTOR = ".agent-assistant-fab__trigger";
   const PANEL_SELECTOR = ".agent-assistant-panel";
-  const RUNTIME_REVISION = "c2f8bf78c9cb749d";
+  const RUNTIME_REVISION = "78054f19492aa458";
   function nativeAgentEntryStyle(hiddenClass) {
     return `
     .${hiddenClass} {
