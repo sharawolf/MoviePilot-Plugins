@@ -173,6 +173,46 @@ def test_checker_keeps_default_next_major_rule(tmp_path: Path) -> None:
     assert "V3 版本应从旧代 2.6.1 跃迁至 3.0.0" in result.stdout
 
 
+@pytest.mark.parametrize("minimum", [">=3.0.0", ">=3.1.3", ">=3.12.0"])
+def test_new_v3_only_classification_accepts_truthful_host_minimum(tmp_path, minimum):
+    _write_v3_fixture(tmp_path, plugin_id="NewPet", v3_version="1.0.0",
+                      exception_id=None, include_legacy=False)
+    path = tmp_path / "package.v3.json"
+    package = json.loads(path.read_text("utf-8"))
+    package["NewPet"].update(v3_only=True, system_version=minimum)
+    path.write_text(json.dumps(package), encoding="utf-8")
+    result = _run_checker(tmp_path)
+    assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.parametrize("minimum", [">=2.9.0", ">=4.0.0", "3.1.3", ">=3.1.3,<4", ""])
+def test_invalid_v3_host_minimum_still_fails(tmp_path, minimum):
+    _write_v3_fixture(tmp_path)
+    path = tmp_path / "package.v3.json"
+    package = json.loads(path.read_text("utf-8"))
+    package["DownloadManagerLocal"]["system_version"] = minimum
+    path.write_text(json.dumps(package), encoding="utf-8")
+    assert _run_checker(tmp_path).returncode == 1
+
+
+def test_new_classification_cannot_bypass_legacy_migration(tmp_path):
+    _write_v3_fixture(tmp_path, plugin_id="OtherPlugin", exception_id=None)
+    path = tmp_path / "package.v3.json"
+    package = json.loads(path.read_text("utf-8"))
+    package["OtherPlugin"]["v3_only"] = True
+    path.write_text(json.dumps(package), encoding="utf-8")
+    result = _run_checker(tmp_path)
+    assert result.returncode == 1
+    assert "不得保留旧代条目" in result.stdout
+
+
+def test_agentmascot_frontend_is_built_tested_and_checked_for_drift():
+    steps = yaml.safe_load(PR_WORKFLOW.read_text("utf-8"))["jobs"]["plugin-release-gate"]["steps"]
+    step = next(item for item in steps if item.get("working-directory") == "plugins.v3/agentmascot")
+    for command in ["npm ci", "npm run build", "npm test", "git diff --exit-code -- dist", "git ls-files --others"]:
+        assert command in step["run"]
+
+
 def test_current_repository_passes_version_gate() -> None:
     """真实工作树中的 package 与插件版号必须一致。"""
     result = _run_checker(REPO_ROOT)

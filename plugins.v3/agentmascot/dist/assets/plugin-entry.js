@@ -1,5 +1,6 @@
-import { D as DEFAULT_CONFIG, V as VIEWPORT_PADDING, f as buildSurfaceLanes } from './runtime-BCybTabx.js?v=94949aa320d4508e';
-import { normalizeConfig, createMascotRuntime, applyMascotImage } from './mascot-runtime.js?v=94949aa320d4508e';
+import { D as DEFAULT_CONFIG, V as VIEWPORT_PADDING, f as buildSurfaceLanes } from './runtime-BCybTabx.js?v=c2f8bf78c9cb749d';
+import { normalizeConfig, createMascotRuntime, applyMascotImage } from './mascot-runtime.js?v=c2f8bf78c9cb749d';
+import { createPointerInput } from './pointer-input.js?v=c2f8bf78c9cb749d';
 
 const ROOT_CLASS = 'agentmascot-plugin-root';
 const SHADOW_CLASS = 'agentmascot-plugin-shadow';
@@ -17,6 +18,8 @@ let root = null;
 let runtime = null;
 let onActivate = null;
 let shadow = null;
+let resizeObserver = null;
+const input = createPointerInput({ getRuntime: () => runtime, point: pointFromEvent });
 
 function ownerWindow(element) {
   return element?.ownerDocument?.defaultView || globalThis
@@ -27,6 +30,7 @@ function schedulerFor(nextEnv) {
     setInterval: (...args) => nextEnv.setInterval(...args),
     clearInterval: id => nextEnv.clearInterval(id),
     setTimeout: (...args) => nextEnv.setTimeout(...args),
+    clearTimeout: id => nextEnv.clearTimeout(id),
     requestAnimationFrame: callback => nextEnv.requestAnimationFrame(callback),
     cancelAnimationFrame: id => nextEnv.cancelAnimationFrame(id),
   }
@@ -41,8 +45,8 @@ function requireContainer(nextContainer) {
 function bounds() {
   const rect = container?.getBoundingClientRect?.();
   return {
-    height: Math.max(rect?.height || 0, FALLBACK_BOUNDS.height),
-    width: Math.max(rect?.width || 0, FALLBACK_BOUNDS.width),
+    height: rect?.height || FALLBACK_BOUNDS.height,
+    width: rect?.width || FALLBACK_BOUNDS.width,
   }
 }
 
@@ -67,32 +71,8 @@ function render() {
   if (shadow) shadow.style.display = runtime.config().shadow ? 'block' : 'none';
 }
 
-function onPointerMove(event) {
-  runtime?.handlePointerMove(pointFromEvent(event));
-}
-
-function onPointerLeave() {
-  runtime?.handlePointerLeave();
-}
-
-function onDragStart(event) {
-  if (event.button !== 0) return
-  event.preventDefault();
-  runtime.startDrag(pointFromEvent(event));
-  root?.setPointerCapture?.(event.pointerId);
-}
-
-function onDragMove(event) {
-  runtime?.moveDrag(pointFromEvent(event), event.movementX);
-}
-
-function onDragEnd(event) {
-  runtime?.endDrag(pointFromEvent(event), event.movementX, event.movementY);
-  root?.releasePointerCapture?.(event.pointerId);
-}
-
 function onClick(event) {
-  if (runtime?.shouldSuppressClick()) {
+  if (input.suppressClick()) {
     event.preventDefault();
     return
   }
@@ -152,22 +132,24 @@ function createRoot() {
 }
 
 function attachEvents() {
-  container.addEventListener('pointermove', onPointerMove, { passive: true });
-  container.addEventListener('pointerleave', onPointerLeave);
-  root.addEventListener('pointerdown', onDragStart);
-  root.addEventListener('pointermove', onDragMove);
-  root.addEventListener('pointerup', onDragEnd);
-  root.addEventListener('pointercancel', onDragEnd);
+  container.addEventListener('pointermove', input.hover, { passive: true });
+  container.addEventListener('pointerleave', input.leave);
+  root.addEventListener('pointerdown', input.down);
+  root.addEventListener('pointermove', input.move);
+  root.addEventListener('pointerup', input.end);
+  root.addEventListener('pointercancel', input.end);
+  root.addEventListener('lostpointercapture', input.end);
   root.addEventListener('click', onClick);
 }
 
 function detachEvents() {
-  container?.removeEventListener('pointermove', onPointerMove);
-  container?.removeEventListener('pointerleave', onPointerLeave);
-  root?.removeEventListener('pointerdown', onDragStart);
-  root?.removeEventListener('pointermove', onDragMove);
-  root?.removeEventListener('pointerup', onDragEnd);
-  root?.removeEventListener('pointercancel', onDragEnd);
+  container?.removeEventListener('pointermove', input.hover);
+  container?.removeEventListener('pointerleave', input.leave);
+  root?.removeEventListener('pointerdown', input.down);
+  root?.removeEventListener('pointermove', input.move);
+  root?.removeEventListener('pointerup', input.end);
+  root?.removeEventListener('pointercancel', input.end);
+  root?.removeEventListener('lostpointercapture', input.end);
   root?.removeEventListener('click', onClick);
 }
 
@@ -203,6 +185,10 @@ function mount(nextContainer, options = {}) {
     viewportPadding: options.viewportPadding ?? VIEWPORT_PADDING,
   });
   attachEvents();
+  if (env.ResizeObserver) {
+    resizeObserver = new env.ResizeObserver(() => { runtime?.clampToBounds(); render(); });
+    resizeObserver.observe(container);
+  }
   runtime.start();
   render();
 
@@ -213,6 +199,9 @@ function mount(nextContainer, options = {}) {
 }
 
 function unmount() {
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+  input.reset();
   runtime?.stop();
   detachEvents();
   root?.remove();

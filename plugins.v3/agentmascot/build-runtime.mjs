@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
-export const runtimeFiles = ['runtime-BCybTabx.js', 'agentmascot-loader.js', 'provider-mBbtEwEX.js', 'plugin-entry.js', 'mascot-runtime.js', 'codex-pet.js']
+export const runtimeFiles = ['runtime-BCybTabx.js', 'agentmascot-loader.js', 'provider-mBbtEwEX.js', 'plugin-entry.js', 'mascot-runtime.js', 'codex-pet.js', 'pointer-input.js']
 const digest = createHash('sha256')
 for (const name of runtimeFiles) digest.update(name).update(readFileSync(new URL(`runtime/${name}`, import.meta.url)))
 export const runtimeRevision = digest.digest('hex').slice(0, 16)

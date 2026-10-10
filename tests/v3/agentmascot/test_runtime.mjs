@@ -50,8 +50,10 @@ function fakeEnv() {
   let clicks = 0;
   const trigger = { click: () => clicks++ };
   function element() {
-    return { style: {}, setAttribute() {}, append() {}, addEventListener() {},
-      removeEventListener() {}, remove() { nodes.delete(this.id); } };
+    const handlers = new Map();
+    return { style: {}, handlers, children: [], setAttribute() {}, append(...children) { this.children.push(...children); },
+      addEventListener(name, fn) { handlers.set(name, fn); },
+      removeEventListener(name) { handlers.delete(name); }, remove() { nodes.delete(this.id); } };
   }
   const document = {
     querySelector: selector => selector === '.agent-assistant-fab' ? native : selector === '.agent-assistant-fab__trigger' ? trigger : null,
@@ -201,4 +203,60 @@ test('activating the mascot clicks the native assistant only once', () => {
   entry.open();
   assert.equal(f.clicks(), 1);
   entry.destroy();
+});
+
+
+test('mobile global entry limits size and keeps the pet above the keyboard and safe areas', async () => {
+  const f = fakeEnv();
+  const viewportEvents = new Map();
+  const viewport = { width: 390, height: 760, offsetLeft: 0, offsetTop: 0,
+    addEventListener(name, fn) { viewportEvents.set(name, fn); },
+    removeEventListener(name) { viewportEvents.delete(name); } };
+  f.env.visualViewport = viewport;
+  f.env.innerWidth = 390; f.env.innerHeight = 844;
+  f.env.getComputedStyle = () => ({ paddingTop: '44px', paddingBottom: '34px' });
+  f.env.matchMedia = () => ({ matches: true });
+  const id = `pet_${'c'.repeat(32)}`;
+  const config = { enabled: true, mascot: id, scale: 4, auto_roam: false, follow_mouse: true };
+  const handle = startAgentMascotPatchEntry(f.env, { api: { get: async () => ({ success: true, message: '', data: {
+    config, pet: { id, version: 2, rows: 11, sprite_url: '/sprite.png' },
+  } }) } });
+  await flush();
+  const root = f.nodes.get('agentmascot-global-root');
+  assert.ok(parseFloat(root.style.width) <= 120);
+  f.events.get('pointermove').fn({ pointerType: 'touch', clientX: 100, clientY: 10 });
+  assert.equal(handle.getState().motion.pointerReceived, false, 'page scrolling must not start chasing');
+  const event = (type, x, y) => ({ type, pointerType: 'touch', pointerId: 1, button: 0,
+    clientX: x, clientY: y, currentTarget: root, preventDefault() {} });
+  root.handlers.get('pointerdown')(event('pointerdown', 200, 260));
+  root.handlers.get('pointermove')(event('pointermove', 350, 750));
+  root.handlers.get('pointerup')(event('pointerup', 350, 750));
+  viewport.height = 300; viewport.offsetTop = 20;
+  viewportEvents.get('resize')();
+  assert.ok(f.y() >= 72);
+  assert.ok(f.y() + parseFloat(root.style.height) <= 278.01, 'keyboard and bottom safe area remain clear');
+  assert.equal(config.scale, 4, 'responsive sizing does not overwrite the saved scale');
+  viewport.offsetTop = 40; viewportEvents.get('scroll')();
+  assert.ok(f.y() >= 92);
+  handle.stop();
+  assert.equal(viewportEvents.size, 0);
+  assert.equal(f.nodes.size, 0);
+});
+
+
+test('a failed sprite restores the native assistant instead of leaving an invisible entry', async () => {
+  const f = fakeEnv();
+  const handle = startAgentMascotPatchEntry(f.env, { api: { get: async () => envelope({ enabled: true, mascot: 'kurisu' }) } });
+  await flush();
+  const img = f.nodes.get('agentmascot-global-root').children[0].children[0];
+  img.handlers.get('error')({ currentTarget: img });
+  assert.equal(handle.getState().mounted, false);
+  assert.equal(f.classes.size, 0);
+  assert.equal(f.frames.size, 0);
+  assert.match(handle.getState().error, /图片加载失败/);
+  await handle.sync();
+  assert.equal(handle.getState().mounted, true);
+  img.handlers.get('error')({ currentTarget: img });
+  assert.equal(handle.getState().mounted, true, 'late image errors cannot remove a newer mascot');
+  handle.stop();
 });

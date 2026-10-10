@@ -2,17 +2,17 @@ const currentImports = {};
       const exportSet = new Set(['Module', '__esModule', 'default', '_export_sfc']);
       let moduleMap = {
 "./Config":()=>{
-      dynamicLoadingCss(["PluginWorkspace-CK18b_D4.css"], false, './Config');
-      return __federation_import('./__federation_expose_Config-BskksQET.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["PluginWorkspace-DeZRjait.css"], false, './Config');
+      return __federation_import('./__federation_expose_Config-BFhXyIAD.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./Page":()=>{
-      dynamicLoadingCss(["PluginWorkspace-CK18b_D4.css"], false, './Page');
-      return __federation_import('./__federation_expose_Page-Dd79uJPC.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["PluginWorkspace-DeZRjait.css"], false, './Page');
+      return __federation_import('./__federation_expose_Page-DMhWLvxU.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./AppPage":()=>{
-      dynamicLoadingCss(["PluginWorkspace-CK18b_D4.css"], false, './AppPage');
-      return __federation_import('./__federation_expose_AppPage-C6AFaeqT.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["PluginWorkspace-DeZRjait.css"], false, './AppPage');
+      return __federation_import('./__federation_expose_AppPage-BLkgWCrC.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./PluginEntry":()=>{
       dynamicLoadingCss([], false, './PluginEntry');
-      return __federation_import('./__federation_expose_PluginEntry-Dl6Vwcex.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
+      return __federation_import('./__federation_expose_PluginEntry-DAKWOre7.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
       const seen = {};
       const dynamicLoadingCss = (cssFilePaths, dontAppendStylesToHead, exposeItemName) => {
         const metaUrl = import.meta.url;

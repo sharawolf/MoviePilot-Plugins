@@ -1,8 +1,8 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { G, W, C, r, R, F, f, M } from './runtime-BCybTabx.js?v=94949aa320d4508e';
-import { isCustomPet, resolveMascotProfile, createMascotRuntime, petAssetUrls, cloneConfig } from './mascot-runtime.js?v=94949aa320d4508e';
-import { startAgentMascotPatchEntry } from './agentmascot-loader.js?v=94949aa320d4508e';
-import { u } from './provider-mBbtEwEX.js?v=94949aa320d4508e';
+import { G, W, C, r, R, F, f, M } from './runtime-BCybTabx.js?v=c2f8bf78c9cb749d';
+import { isCustomPet, resolveMascotProfile, createMascotRuntime, petAssetUrls, cloneConfig } from './mascot-runtime.js?v=c2f8bf78c9cb749d';
+import { startAgentMascotPatchEntry } from './agentmascot-loader.js?v=c2f8bf78c9cb749d';
+import { u } from './provider-mBbtEwEX.js?v=c2f8bf78c9cb749d';
 
 const actionLabels = {
   idle: '待机', walk: '走路', run: '跑步', jump: '跳跃', fall: '下落', land: '落地',
@@ -30,6 +30,46 @@ function actionGroups(mascot, kind = 'action') {
     ['air', '空中', ['jump', 'fall', 'land']], ['interact', '交互', ['drag', 'resist', 'surprise']],
     ['feature', '角色特色', ['cheer', 'spinCelebrate']],
   ].map(([id, title, items]) => ({ id, title, items: items.filter(name => R.includes(name) || (F[mascot] || []).includes(name)).map(id => ({ id, label: actionLabels[id] || id })) })).filter(g => g.items.length)
+}
+
+// Shared by the global entry, federated entry and Vue preview.
+function createPointerInput({ getRuntime, point, paused = () => false, render = () => {} }) {
+  let active = null, start = null, last = null, moved = false, suppressUntil = 0;
+  const hover = event => {
+    if (event.pointerType && event.pointerType !== 'mouse') getRuntime()?.handlePointerLeave();
+    else if (event.isPrimary !== false) getRuntime()?.handlePointerMove(point(event));
+    render();
+  };
+  function down(event) {
+    if (paused() || active !== null || event.isPrimary === false || event.button !== 0) return
+    event.preventDefault();
+    active = event.pointerId;
+    moved = false;
+    start = last = point(event);
+    getRuntime()?.startDrag(start);
+    event.currentTarget?.setPointerCapture?.(active);
+  }
+  function move(event) {
+    if (active === null || event.pointerId !== active) return
+    const next = point(event);
+    if (Math.hypot(next.x - start.x, next.y - start.y) > 5) { moved = true; suppressUntil = Date.now() + 500; }
+    getRuntime()?.moveDrag(next, next.x - last.x);
+    last = next;
+  }
+  function end(event) {
+    if (active === null || event.pointerId !== active) return
+    const cancelled = event.type === 'pointercancel' || event.type === 'lostpointercapture';
+    if (cancelled || moved) suppressUntil = Date.now() + 500;
+    getRuntime()?.endDrag(cancelled ? last : point(event), 0, 0);
+    const id = active;
+    active = null;
+    if (event.currentTarget?.hasPointerCapture?.(id)) event.currentTarget.releasePointerCapture(id);
+  }
+  return { hover, down, move, end,
+    leave() { getRuntime()?.handlePointerLeave(); },
+    suppressClick: () => Date.now() < suppressUntil || getRuntime()?.shouldSuppressClick(),
+    reset() { if (active !== null) getRuntime()?.endDrag(last, 0, 0); active = null; start = last = null; },
+  }
 }
 
 const {createElementVNode:_createElementVNode$2,toDisplayString:_toDisplayString$2,createTextVNode:_createTextVNode$2,resolveComponent:_resolveComponent$2,withCtx:_withCtx$2,createVNode:_createVNode$2,normalizeStyle:_normalizeStyle,unref:_unref$2,normalizeClass:_normalizeClass$2,openBlock:_openBlock$2,createElementBlock:_createElementBlock$2,createCommentVNode:_createCommentVNode$2,renderList:_renderList$2,Fragment:_Fragment$2,createBlock:_createBlock$2} = await importShared('vue');
@@ -88,6 +128,7 @@ let observer;
 let mediaQuery;
 let disposed = false;
 const timeouts = new Set();
+const input = createPointerInput({ getRuntime: () => runtime, point, paused: () => paused.value });
 
 function bounds() {
   const rect = stage.value?.getBoundingClientRect();
@@ -119,18 +160,8 @@ function point(event) {
   const rect = stage.value?.getBoundingClientRect();
   return rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null
 }
-function dragStart(event) {
-  if (event.button !== 0 || paused.value) return
-  event.preventDefault();
-  runtime?.startDrag(point(event));
-  event.currentTarget.setPointerCapture?.(event.pointerId);
-}
-function dragEnd(event) {
-  runtime?.endDrag(point(event), event.movementX || 0, event.movementY || 0);
-  if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-}
 function click() {
-  if (!paused.value && !runtime?.shouldSuppressClick()) runtime?.celebrate();
+  if (!paused.value && !input.suppressClick()) runtime?.celebrate();
 }
 const petStyle = computed$3(() => frame.value ? {
   width: `${frame.value.size}px`, height: `${frame.value.height || frame.value.size}px`,
@@ -159,13 +190,14 @@ onMounted$1(() => {
       requestAnimationFrame: callback => window.requestAnimationFrame(callback), cancelAnimationFrame: id => window.cancelAnimationFrame(id),
     },
   });
-  observer = new ResizeObserver(() => reset());
+  observer = new ResizeObserver(() => { runtime?.clampToBounds(); render(); });
   observer.observe(stage.value);
   document.addEventListener('visibilitychange', updateActivity);
   updateActivity();
 });
 onBeforeUnmount$2(() => {
   disposed = true;
+  input.reset();
   runtime?.stop();
   for (const timer of timeouts) window.clearTimeout(timer);
   timeouts.clear();
@@ -179,7 +211,7 @@ return (_ctx, _cache) => {
 
   return (_openBlock$2(), _createElementBlock$2("div", _hoisted_1$2, [
     _createElementVNode$2("div", _hoisted_2$2, [
-      _cache[5] || (_cache[5] = _createElementVNode$2("div", null, [
+      _cache[9] || (_cache[9] = _createElementVNode$2("div", null, [
         _createElementVNode$2("h3", null, "动作预览"),
         _createElementVNode$2("p", null, "使用当前设置演示，保存后应用到页面桌宠。")
       ], -1)),
@@ -201,7 +233,7 @@ return (_ctx, _cache) => {
           "prepend-icon": "mdi-restore",
           onClick: reset
         }, {
-          default: _withCtx$2(() => [...(_cache[4] || (_cache[4] = [
+          default: _withCtx$2(() => [...(_cache[8] || (_cache[8] = [
             _createTextVNode$2("复位", -1)
           ]))]),
           _: 1
@@ -213,8 +245,8 @@ return (_ctx, _cache) => {
         ref_key: "stage",
         ref: stage,
         class: "am-stage",
-        onPointermove: _cache[2] || (_cache[2] = $event => (_unref$2(runtime)?.handlePointerMove(point($event)))),
-        onPointerleave: _cache[3] || (_cache[3] = $event => (_unref$2(runtime)?.handlePointerLeave()))
+        onPointermove: _cache[6] || (_cache[6] = (...args) => (_unref$2(input).hover && _unref$2(input).hover(...args))),
+        onPointerleave: _cache[7] || (_cache[7] = (...args) => (_unref$2(input).leave && _unref$2(input).leave(...args)))
       }, [
         _createElementVNode$2("div", _hoisted_5$2, [
           _createElementVNode$2("span", null, _toDisplayString$2(profile.value.label), 1),
@@ -227,10 +259,11 @@ return (_ctx, _cache) => {
               style: _normalizeStyle(petStyle.value),
               type: "button",
               "aria-label": `与${profile.value.label}互动`,
-              onPointerdown: dragStart,
-              onPointermove: _cache[1] || (_cache[1] = $event => (_unref$2(runtime)?.moveDrag(point($event), $event.movementX || 0))),
-              onPointerup: dragEnd,
-              onPointercancel: dragEnd,
+              onPointerdown: _cache[1] || (_cache[1] = (...args) => (_unref$2(input).down && _unref$2(input).down(...args))),
+              onPointermove: _cache[2] || (_cache[2] = (...args) => (_unref$2(input).move && _unref$2(input).move(...args))),
+              onPointerup: _cache[3] || (_cache[3] = (...args) => (_unref$2(input).end && _unref$2(input).end(...args))),
+              onPointercancel: _cache[4] || (_cache[4] = (...args) => (_unref$2(input).end && _unref$2(input).end(...args))),
+              onLostpointercapture: _cache[5] || (_cache[5] = (...args) => (_unref$2(input).end && _unref$2(input).end(...args))),
               onClick: click
             }, [
               _createElementVNode$2("span", _hoisted_7$2, [
@@ -243,7 +276,7 @@ return (_ctx, _cache) => {
               ])
             ], 46, _hoisted_6$2))
           : _createCommentVNode$2("", true),
-        _cache[6] || (_cache[6] = _createElementVNode$2("div", {
+        _cache[10] || (_cache[10] = _createElementVNode$2("div", {
           class: "am-stage-ground",
           "aria-hidden": "true"
         }, null, -1))
@@ -301,10 +334,10 @@ return (_ctx, _cache) => {
         size: "18"
       }),
       _createTextVNode$2(_toDisplayString$2(_unref$2(actionLabels)[metrics.value.action] || '待机'), 1),
-      _cache[7] || (_cache[7] = _createElementVNode$2("span", null, "动作测试仅影响此预览区", -1))
+      _cache[11] || (_cache[11] = _createElementVNode$2("span", null, "动作测试仅影响此预览区", -1))
     ]),
     _createElementVNode$2("details", _hoisted_17$1, [
-      _cache[8] || (_cache[8] = _createElementVNode$2("summary", null, "调试信息", -1)),
+      _cache[12] || (_cache[12] = _createElementVNode$2("summary", null, "调试信息", -1)),
       _createElementVNode$2("dl", null, [
         (_openBlock$2(true), _createElementBlock$2(_Fragment$2, null, _renderList$2({ 表面: metrics.value.surface, 状态: metrics.value.state, 帧: metrics.value.poseIndex, 目标X: number(metrics.value.targetX), 目标Y: number(metrics.value.targetY), 速度X: number(metrics.value.vx), 速度Y: number(metrics.value.vy) }, (value, label) => {
           return (_openBlock$2(), _createElementBlock$2("div", { key: label }, [
@@ -1299,7 +1332,8 @@ return (_ctx, _cache) => {
                           "onUpdate:modelValue": $event => (_unref(controller).edit(item.key, $event))
                         }, null, 8, ["model-value", "disabled", "label", "onUpdate:modelValue"])
                       }), 64))
-                    ])
+                    ]),
+                    _cache[34] || (_cache[34] = _createElementVNode("p", { class: "am-hint" }, "手机上轻点桌宠打开助手，拖动调整位置；滑动页面不会触发跟随。页面桌宠会自动缩小以适应屏幕。", -1))
                   ], 64))
                 : (activeTab.value === 'preview' && visible.value)
                   ? (_openBlock(), _createBlock(_sfc_main$2, {
@@ -1318,7 +1352,7 @@ return (_ctx, _cache) => {
                 variant: "text",
                 onClick: _cache[10] || (_cache[10] = $event => (discardPrompt.value = false))
               }, {
-                default: _withCtx(() => [...(_cache[34] || (_cache[34] = [
+                default: _withCtx(() => [...(_cache[35] || (_cache[35] = [
                   _createTextVNode("继续编辑", -1)
                 ]))]),
                 _: 1
@@ -1354,7 +1388,7 @@ return (_ctx, _cache) => {
                     disabled: busy.value || _unref(state).pendingReadback,
                     onClick: _unref(controller).reset
                   }, {
-                    default: _withCtx(() => [...(_cache[35] || (_cache[35] = [
+                    default: _withCtx(() => [...(_cache[36] || (_cache[36] = [
                       _createTextVNode("撤销修改", -1)
                     ]))]),
                     _: 1
@@ -1366,7 +1400,7 @@ return (_ctx, _cache) => {
                       disabled: _unref(state).saving,
                       onClick: close
                     }, {
-                      default: _withCtx(() => [...(_cache[36] || (_cache[36] = [
+                      default: _withCtx(() => [...(_cache[37] || (_cache[37] = [
                         _createTextVNode("关闭", -1)
                       ]))]),
                       _: 1
@@ -1380,7 +1414,7 @@ return (_ctx, _cache) => {
                     loading: _unref(state).loading,
                     onClick: refresh
                   }, {
-                    default: _withCtx(() => [...(_cache[37] || (_cache[37] = [
+                    default: _withCtx(() => [...(_cache[38] || (_cache[38] = [
                       _createTextVNode("刷新确认", -1)
                     ]))]),
                     _: 1
@@ -1394,7 +1428,7 @@ return (_ctx, _cache) => {
                     disabled: !_unref(dirty) || !_unref(state).ready || _unref(state).loading || libraryBusy.value,
                     onClick: _unref(controller).save
                   }, {
-                    default: _withCtx(() => [...(_cache[38] || (_cache[38] = [
+                    default: _withCtx(() => [...(_cache[39] || (_cache[39] = [
                       _createTextVNode("保存设置", -1)
                     ]))]),
                     _: 1

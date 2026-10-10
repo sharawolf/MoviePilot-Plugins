@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { buildSurfaceLanes, createMascotRuntime, resolveMascotProfile, isCustomPet } from '../runtime.js'
 import { actionGroups, actionLabels } from '../actions.js'
+import { createPointerInput } from '../../runtime/pointer-input.js'
 
 const props = defineProps({ config: { type: Object, required: true } })
 const stage = ref(null)
@@ -17,6 +18,7 @@ let observer
 let mediaQuery
 let disposed = false
 const timeouts = new Set()
+const input = createPointerInput({ getRuntime: () => runtime, point, paused: () => paused.value })
 
 function bounds() {
   const rect = stage.value?.getBoundingClientRect()
@@ -48,18 +50,8 @@ function point(event) {
   const rect = stage.value?.getBoundingClientRect()
   return rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null
 }
-function dragStart(event) {
-  if (event.button !== 0 || paused.value) return
-  event.preventDefault()
-  runtime?.startDrag(point(event))
-  event.currentTarget.setPointerCapture?.(event.pointerId)
-}
-function dragEnd(event) {
-  runtime?.endDrag(point(event), event.movementX || 0, event.movementY || 0)
-  if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-}
 function click() {
-  if (!paused.value && !runtime?.shouldSuppressClick()) runtime?.celebrate()
+  if (!paused.value && !input.suppressClick()) runtime?.celebrate()
 }
 const petStyle = computed(() => frame.value ? {
   width: `${frame.value.size}px`, height: `${frame.value.height || frame.value.size}px`,
@@ -88,13 +80,14 @@ onMounted(() => {
       requestAnimationFrame: callback => window.requestAnimationFrame(callback), cancelAnimationFrame: id => window.cancelAnimationFrame(id),
     },
   })
-  observer = new ResizeObserver(() => reset())
+  observer = new ResizeObserver(() => { runtime?.clampToBounds(); render() })
   observer.observe(stage.value)
   document.addEventListener('visibilitychange', updateActivity)
   updateActivity()
 })
 onBeforeUnmount(() => {
   disposed = true
+  input.reset()
   runtime?.stop()
   for (const timer of timeouts) window.clearTimeout(timer)
   timeouts.clear()
@@ -113,11 +106,11 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div class="am-preview-grid">
-      <div ref="stage" class="am-stage" @pointermove="runtime?.handlePointerMove(point($event))" @pointerleave="runtime?.handlePointerLeave()">
+      <div ref="stage" class="am-stage" @pointermove="input.hover" @pointerleave="input.leave">
         <div class="am-stage-caption"><span>{{ profile.label }}</span><small>{{ paused ? '预览已暂停' : '拖动角色，或单击互动' }}</small></div>
         <button v-if="frame" class="am-pet" :class="{ 'am-pet--shadow': config.shadow }" :style="petStyle" type="button" :aria-label="`与${profile.label}互动`"
-          @pointerdown="dragStart" @pointermove="runtime?.moveDrag(point($event), $event.movementX || 0)"
-          @pointerup="dragEnd" @pointercancel="dragEnd" @click="click">
+          @pointerdown="input.down" @pointermove="input.move"
+          @pointerup="input.end" @pointercancel="input.end" @lostpointercapture="input.end" @click="click">
           <span class="am-pet-frame"><img :src="frame.frame" :style="frame.imageStyle" alt="" draggable="false" /></span>
         </button>
         <div class="am-stage-ground" aria-hidden="true" />

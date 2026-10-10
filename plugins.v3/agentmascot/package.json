@@ -3,16 +3,16 @@
   "private": true,
   "version": "1.0.0",
   "author": "ifsherlock",
-  "homepage": "https://github.com/ifsherlock/MoviePilot-Plugins",
+  "homepage": "https://github.com/z2561221/MoviePilot-Plugins",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ifsherlock/MoviePilot-Plugins.git",
+    "url": "https://github.com/z2561221/MoviePilot-Plugins.git",
     "directory": "plugins.v3/agentmascot"
   },
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test ../../tests/v3/agentmascot/test_runtime.mjs ../../tests/v3/agentmascot/test_ui.mjs ../../tests/v3/agentmascot/test_components.mjs ../../tests/v3/agentmascot/test_bundle.mjs ../../tests/v3/agentmascot/test_pet_ui.mjs",
+    "test": "node --test ../../tests/v3/agentmascot/test_*.mjs",
     "check:runtime": "node --check dist/assets/agentmascot-loader.js"
   },
   "dependencies": {

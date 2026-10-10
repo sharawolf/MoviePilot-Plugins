@@ -159,6 +159,7 @@ onBeforeUnmount(deactivate)
             <section class="am-slider-card"><label :id="`${fieldId}-speed`">移动速度 <strong>{{ state.draft.speed.toFixed(2) }}×</strong></label><VSlider :model-value="state.draft.speed" :disabled="controlsDisabled" min="0.4" max="2" step="0.05" hide-details color="primary" :aria-labelledby="`${fieldId}-speed`" @update:model-value="controller.edit('speed', $event)" /><p>0.40× — 2.00×</p></section>
           </div>
           <div class="am-behaviors"><VSwitch v-for="item in [{ key: 'follow_mouse', label: '跟随鼠标' }, { key: 'auto_roam', label: '自动游走' }, { key: 'shadow', label: '地面阴影' }]" :key="item.key" :model-value="state.draft[item.key]" :disabled="controlsDisabled" :label="item.label" hide-details inset density="compact" color="primary" @update:model-value="controller.edit(item.key, $event)" /></div>
+          <p class="am-hint">手机上轻点桌宠打开助手，拖动调整位置；滑动页面不会触发跟随。页面桌宠会自动缩小以适应屏幕。</p>
         </template>
         <MascotPreview v-else-if="activeTab === 'preview' && visible" :config="previewConfig" />
       </main>

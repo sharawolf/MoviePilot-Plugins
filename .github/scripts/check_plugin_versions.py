@@ -111,8 +111,8 @@ def _check_v3_release_contract(
     history = meta.get("history")
     if not isinstance(history, dict) or not history:
         return [f"{path}: {plugin_id} 缺少非空 history"]
-    if meta.get("system_version") != ">=3.0.0":
-        errors.append(f"{path}: {plugin_id} 缺少 system_version >=3.0.0")
+    if not re.fullmatch(r">=3\.\d+\.\d+", str(meta.get("system_version", ""))):
+        errors.append(f"{path}: {plugin_id} system_version 必须为 >=3.x.y 的宿主下限")
 
     history_versions = list(history)
     parsed_history = [_semantic_version(item) for item in history_versions]
@@ -175,6 +175,10 @@ def _check_v3_release_contract(
                     f"{path}: {plugin_id} 版本例外目标与 package 版本不一致："
                     f"exception={exception.get('v3_version')}, package={package_version}"
                 )
+    elif meta.get("v3_only") is True:
+        # Repository classification is separate from the four approved version exceptions.
+        if isinstance(legacy_meta, dict):
+            errors.append(f"{path}: {plugin_id} 已声明 V3-only，不得保留旧代条目")
     elif parsed_version and legacy_version:
         expected = f"{legacy_version[0] + 1}.0.0"
         if package_version != expected:

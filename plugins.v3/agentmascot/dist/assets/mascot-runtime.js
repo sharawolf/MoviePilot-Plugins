@@ -1,5 +1,5 @@
-import { n as builtinNormalize, e as createBuiltinRuntime, g as builtinProfile } from './runtime-BCybTabx.js?v=94949aa320d4508e';
-import { createCodexPetRuntime } from './codex-pet.js?v=94949aa320d4508e';
+import { n as builtinNormalize, e as createBuiltinRuntime, g as builtinProfile } from './runtime-BCybTabx.js?v=c2f8bf78c9cb749d';
+import { createCodexPetRuntime } from './codex-pet.js?v=c2f8bf78c9cb749d';
 
 const isCustomPet = name => /^pet_[0-9a-f]{32}$/.test(name || '')
 const renderedImages = new WeakMap()
@@ -37,20 +37,34 @@ function resolveMascotProfile(name, pets = []) {
 function createMascotRuntime(options = {}) {
   let localConfig = normalizeConfig(options.getConfig?.() || options.config)
   let delegate, custom, started = false
+  const clock = options.scheduler || globalThis
+  const timeouts = new Set()
+  const scheduler = { ...Object.fromEntries(['setInterval', 'clearInterval', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame']
+    .filter(name => typeof clock[name] === 'function').map(name => [name, clock[name].bind(clock)])),
+    setTimeout(callback, delay) {
+      const id = clock.setTimeout(() => { timeouts.delete(id); callback() }, delay)
+      timeouts.add(id)
+      return id
+    },
+  }
+  function clearDelayedActions() {
+    for (const id of timeouts) clock.clearTimeout?.(id)
+    timeouts.clear()
+  }
   const current = () => normalizeConfig(options.getConfig?.() || localConfig)
   function select() {
     custom = isCustomPet(current().mascot)
-    delegate = (custom ? createCodexPetRuntime : createBuiltinRuntime)({ ...options, getConfig: current })
+    delegate = (custom ? createCodexPetRuntime : createBuiltinRuntime)({ ...options, scheduler, getConfig: current })
   }
   select()
   const runtime = {
     get pet() { return delegate.pet }, config: current,
     start() { started = true; delegate.start() },
-    stop() { started = false; delegate.stop() },
+    stop() { started = false; delegate.stop(); clearDelayedActions() },
     updateConfig(next) {
       localConfig = normalizeConfig(next)
       if (custom !== isCustomPet(current().mascot)) {
-        delegate.stop(); select(); if (started) delegate.start()
+        delegate.stop(); clearDelayedActions(); select(); if (started) delegate.start()
       } else delegate.updateConfig(current())
     },
   }

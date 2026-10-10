@@ -1,6 +1,7 @@
 import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js';
 import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls, applyMascotImage } from './mascot-runtime.js';
 import { u as unwrapResponse } from './provider-mBbtEwEX.js';
+import { createPointerInput, viewportGeometry } from './pointer-input.js';
 
 const ENTRY_SELECTOR = '.agent-assistant-fab';
 const TRIGGER_SELECTOR = '.agent-assistant-fab__trigger';
@@ -119,16 +120,18 @@ function createGlobalDomAdapter(options = {}) {
   let shadow = null;
   let surfaceLanes = [];
   let lastSurfaceScan = 0;
+  let safeArea = null;
+  let viewport = viewportGeometry(env);
+  const input = createPointerInput({ getRuntime, point: event => ({
+    x: event.clientX - viewport.left, y: event.clientY - viewport.top,
+  }) });
 
   function runtime() {
     return getRuntime()
   }
 
   function bounds() {
-    return {
-      height: env.innerHeight,
-      width: env.innerWidth,
-    }
+    return { height: viewport.height, width: viewport.width }
   }
 
   function collectSurfaceLanes(context, force = false) {
@@ -136,7 +139,7 @@ function createGlobalDomAdapter(options = {}) {
     if (!force && surfaceLanes.length && now - lastSurfaceScan < SURFACE_SCAN_MS) return surfaceLanes
 
     try {
-      surfaceLanes = buildDomSurfaceLanes(context, env.document.querySelectorAll(DOM_SURFACE_SELECTORS), {
+      surfaceLanes = buildDomSurfaceLanes(context, viewport.compact || viewport.left || viewport.top ? [] : env.document.querySelectorAll(DOM_SURFACE_SELECTORS), {
         getStyle: element => env.getComputedStyle(element),
         onError: error => console.debug('[AgentMascot] surface element skipped', error),
         shouldIgnoreElement: element => element === root || root?.contains(element) || agentEntry.contains(element),
@@ -157,33 +160,13 @@ function createGlobalDomAdapter(options = {}) {
     const pet = runtime().pet;
     root.style.width = `${state.size}px`;
     root.style.height = `${state.height || state.size}px`;
-    root.style.transform = `translate3d(${state.left}px, ${state.top}px, 0) scaleX(${state.flipX ?? (pet.lookRight ? -1 : 1)})`;
+    root.style.transform = `translate3d(${state.left + viewport.left}px, ${state.top + viewport.top}px, 0) scaleX(${state.flipX ?? (pet.lookRight ? -1 : 1)})`;
     applyMascotImage(img, state);
     shadow.style.display = runtime().config().shadow ? 'block' : 'none';
   }
 
-  function onPointerMove(event) {
-    runtime().handlePointerMove({ x: event.clientX, y: event.clientY });
-  }
-
-  function startDrag(event) {
-    if (event.button !== 0) return
-    event.preventDefault();
-    runtime().startDrag({ x: event.clientX, y: event.clientY });
-    root?.setPointerCapture?.(event.pointerId);
-  }
-
-  function onDrag(event) {
-    runtime().moveDrag({ x: event.clientX, y: event.clientY }, event.movementX);
-  }
-
-  function endDrag(event) {
-    runtime().endDrag({ x: event.clientX, y: event.clientY }, event.movementX, event.movementY);
-    root?.releasePointerCapture?.(event.pointerId);
-  }
-
   function onClick(event) {
-    if (runtime().shouldSuppressClick()) {
+    if (input.suppressClick()) {
       event.preventDefault();
       return
     }
@@ -204,6 +187,9 @@ function createGlobalDomAdapter(options = {}) {
         z-index: 2147483000;
         display: grid;
         place-items: center;
+        padding: 0;
+        border: 0;
+        background: transparent;
         cursor: grab;
         user-select: none;
         touch-action: none;
@@ -237,12 +223,24 @@ function createGlobalDomAdapter(options = {}) {
   function mount() {
     if (root) return
     ensureStyle();
+    safeArea = env.document.createElement('span');
+    safeArea.id = 'agentmascot-safe-area';
+    safeArea.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+    safeArea.setAttribute('aria-hidden', 'true');
+    env.document.body.appendChild(safeArea);
+    viewport = viewportGeometry(env, env.getComputedStyle(safeArea));
     root = env.document.createElement('button');
     root.id = ROOT_ID;
     root.type = 'button';
     root.setAttribute('aria-label', '打开智能体助手');
     img = env.document.createElement('img');
     img.alt = '';
+    img.addEventListener('error', event => {
+      if (event.currentTarget === img) options.onAssetError?.();
+    });
+    img.addEventListener('load', event => {
+      if (event.currentTarget === img) options.onAssetLoad?.();
+    });
     shadow = env.document.createElement('span');
     shadow.className = 'agentmascot-global-shadow';
     const crop = env.document.createElement('span');
@@ -250,16 +248,22 @@ function createGlobalDomAdapter(options = {}) {
     crop.append(img);
     root.append(crop, shadow);
     env.document.body.appendChild(root);
-    env.document.addEventListener('pointermove', onPointerMove, { passive: true, capture: true });
-    root.addEventListener('pointerdown', startDrag);
-    root.addEventListener('pointermove', onDrag);
-    root.addEventListener('pointerup', endDrag);
-    root.addEventListener('pointercancel', endDrag);
+    env.document.addEventListener('pointermove', input.hover, { passive: true, capture: true });
+    env.document.addEventListener('pointerleave', input.leave);
+    root.addEventListener('pointerdown', input.down);
+    root.addEventListener('pointermove', input.move);
+    root.addEventListener('pointerup', input.end);
+    root.addEventListener('pointercancel', input.end);
+    root.addEventListener('lostpointercapture', input.end);
     root.addEventListener('click', onClick);
   }
 
   function unmount() {
-    env.document.removeEventListener('pointermove', onPointerMove, true);
+    env.document.removeEventListener('pointermove', input.hover, true);
+    env.document.removeEventListener('pointerleave', input.leave);
+    input.reset();
+    safeArea?.remove();
+    safeArea = null;
     root?.remove();
     root = null;
     img = null;
@@ -267,11 +271,16 @@ function createGlobalDomAdapter(options = {}) {
   }
 
   function onResize() {
+    viewport = viewportGeometry(env, safeArea ? env.getComputedStyle(safeArea) : {});
+    surfaceLanes = [];
+    input.leave();
     runtime().clampToBounds();
+    render();
   }
 
   return {
     bounds,
+    config: config => ({ ...config, scale: Math.min(config.scale, viewport.maxScale) }),
     collectSurfaceLanes,
     mount,
     onResize,
@@ -317,6 +326,7 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   let syncing = false;
   let lastConfigLog = '';
   let lastError = '';
+  let assetError = '';
   const log = (level, message, detail) => env.console?.[level]?.(`[AgentMascot] ${message}`, detail);
   if (previous) log('info', '替换旧桌宠运行器', { previous: previous.revision || 'legacy', revision: RUNTIME_REVISION });
 
@@ -335,11 +345,17 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
     env,
     getRuntime: () => runtime,
     nativeEntryStyle: nativeAgentEntryStyle(HIDDEN_CLASS),
+    onAssetError() {
+      unmount();
+      if (!assetError) log('error', '角色图片加载失败，已恢复原生助手入口');
+      assetError = '角色图片加载失败，已恢复原生助手入口';
+    },
+    onAssetLoad() { if (assetError) log('info', '角色图片加载已恢复'); assetError = ''; },
   });
 
   runtime = createMascotRuntime({
     bounds: adapter.bounds,
-    getConfig: () => config,
+    getConfig: () => adapter.config(config),
     getSurfaceLanes: adapter.collectSurfaceLanes,
     initialPet: {
       anchorX: 180,
@@ -353,6 +369,7 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
       setInterval: (...args) => env.setInterval(...args),
       clearInterval: id => env.clearInterval(id),
       setTimeout: (...args) => env.setTimeout(...args),
+      clearTimeout: id => env.clearTimeout(id),
       requestAnimationFrame: callback => env.requestAnimationFrame(callback),
       cancelAnimationFrame: id => env.cancelAnimationFrame(id),
     },
@@ -424,6 +441,8 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   syncFromConfig();
   configTimer = env.setInterval(syncFromConfig, CONFIG_POLL_MS);
   env.addEventListener('resize', adapter.onResize);
+  env.visualViewport?.addEventListener('resize', adapter.onResize);
+  env.visualViewport?.addEventListener('scroll', adapter.onResize);
 
   const handle = {
     pluginId,
@@ -437,7 +456,7 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
         revision: RUNTIME_REVISION,
         renderer: isCustomPet(config.mascot) ? 'codex-pet' : 'builtin',
         motion: runtime.debugState(),
-        error: lastError || null,
+        error: lastError || assetError || null,
         nativeEntryAvailable: Boolean(env.document.querySelector(TRIGGER_SELECTOR)),
       }
     },
@@ -445,6 +464,8 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
       stopped = true;
       env.clearInterval(configTimer);
       env.removeEventListener('resize', adapter.onResize);
+      env.visualViewport?.removeEventListener('resize', adapter.onResize);
+      env.visualViewport?.removeEventListener('scroll', adapter.onResize);
       unmount();
       env.document.getElementById(STYLE_ID)?.remove();
       if (env.__AgentMascotGlobalLoader === handle) delete env.__AgentMascotGlobalLoader;
