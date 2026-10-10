@@ -2,14 +2,13 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from app import schemas
+from pydantic import BaseModel, Field
 
 
 class MascotConfig(BaseModel):
     enabled: bool = False
-    mascot: Literal["chibiterasu", "nailong", "kurisu"] = "chibiterasu"
+    mascot: str = Field(default="chibiterasu", pattern=r"^(chibiterasu|nailong|kurisu|pet_[0-9a-f]{32})$")
     replace_agent_entry: bool = True
     show_sidebar_nav: bool = True
     scale: float = Field(default=1.0, ge=0.6, le=4.0)
@@ -29,15 +28,39 @@ class MascotSummary(PublicSummary):
     actions: list[str]
 
 
+class PetInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+    version: Literal[1, 2]
+    rows: Literal[9, 11]
+    icon: str
+    sprite_url: str
+
+
+class PetList(BaseModel):
+    pets: list[PetInfo]
+
+
+class PetResult(BaseModel):
+    pet: PetInfo
+
+
 class StatusData(BaseModel):
     config: MascotConfig
     summary: MascotSummary
+    pets: list[PetInfo] = Field(default_factory=list)
+    pet: PetInfo | None = None
 
 
 class PublicStatusData(BaseModel):
     config: MascotConfig
     summary: PublicSummary
+    pet: PetInfo | None = None
 
 
 StatusResponse = schemas.Response[StatusData]
 PublicStatusResponse = schemas.Response[PublicStatusData]
+PetListResponse = schemas.Response[PetList]
+PetResponse = schemas.Response[PetResult]
+DeleteResponse = schemas.Response[None]

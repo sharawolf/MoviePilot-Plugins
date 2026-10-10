@@ -2,14 +2,14 @@ const currentImports = {};
       const exportSet = new Set(['Module', '__esModule', 'default', '_export_sfc']);
       let moduleMap = {
 "./Config":()=>{
-      dynamicLoadingCss(["PluginWorkspace-fhlpYOWe.css"], false, './Config');
-      return __federation_import('./__federation_expose_Config-BsqKd3_O.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["PluginWorkspace-CK18b_D4.css"], false, './Config');
+      return __federation_import('./__federation_expose_Config-jgdK0CwW.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./Page":()=>{
-      dynamicLoadingCss(["PluginWorkspace-fhlpYOWe.css"], false, './Page');
-      return __federation_import('./__federation_expose_Page-vrJ5VU73.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["PluginWorkspace-CK18b_D4.css"], false, './Page');
+      return __federation_import('./__federation_expose_Page-DJ2Go2Gp.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./AppPage":()=>{
-      dynamicLoadingCss(["PluginWorkspace-fhlpYOWe.css"], false, './AppPage');
-      return __federation_import('./__federation_expose_AppPage-Bj5cHQzl.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["PluginWorkspace-CK18b_D4.css"], false, './AppPage');
+      return __federation_import('./__federation_expose_AppPage-X7MX5ZVL.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./PluginEntry":()=>{
       dynamicLoadingCss([], false, './PluginEntry');
       return __federation_import('./__federation_expose_PluginEntry-CW1_2yKa.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};

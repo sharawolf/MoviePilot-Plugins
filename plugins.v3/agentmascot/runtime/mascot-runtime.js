@@ -1,0 +1,53 @@
+import { n as builtinNormalize, e as createBuiltinRuntime, g as builtinProfile } from './runtime-BCybTabx.js';
+import { createCodexPetRuntime } from './codex-pet.js';
+
+const isCustomPet = name => /^pet_[0-9a-f]{32}$/.test(name || '')
+function normalizeConfig(config = {}) {
+  const result = builtinNormalize(config)
+  if (isCustomPet(config?.mascot)) result.mascot = config.mascot
+  if (config?._pet) result._pet = config._pet
+  return result
+}
+function cloneConfig(config) {
+  const result = normalizeConfig(config)
+  delete result._pet
+  return JSON.parse(JSON.stringify(result))
+}
+function petAssetUrls(pet, env = globalThis) {
+  if (!pet || !pet.sprite_url?.startsWith('/')) return pet
+  const base = env.document?.querySelector?.('base')?.href || (env.location?.origin ? `${env.location.origin}/` : null)
+  return { ...pet, sprite_url: base ? new URL(pet.sprite_url.slice(1), base).href : pet.sprite_url }
+}
+function resolveMascotProfile(name, pets = []) {
+  if (!isCustomPet(name)) return builtinProfile(name)
+  const pet = pets.find(item => item.id === name)
+  return pet ? { ...pet, label: pet.name } : { label: '未找到导入角色', icon: '', missing: true }
+}
+function createMascotRuntime(options = {}) {
+  let localConfig = normalizeConfig(options.getConfig?.() || options.config)
+  let delegate, custom, started = false
+  const current = () => normalizeConfig(options.getConfig?.() || localConfig)
+  function select() {
+    custom = isCustomPet(current().mascot)
+    delegate = (custom ? createCodexPetRuntime : createBuiltinRuntime)({ ...options, getConfig: current })
+  }
+  select()
+  const runtime = {
+    get pet() { return delegate.pet }, config: current,
+    start() { started = true; delegate.start() },
+    stop() { started = false; delegate.stop() },
+    updateConfig(next) {
+      localConfig = normalizeConfig(next)
+      if (custom !== isCustomPet(current().mascot)) {
+        delegate.stop(); select(); if (started) delegate.start()
+      } else delegate.updateConfig(current())
+    },
+  }
+  for (const method of ['renderState','debugState','clampToBounds','resetPose','playAction','playBehavior',
+    'shouldSuppressClick','celebrate','handlePointerMove','handlePointerLeave','startDrag','moveDrag','endDrag']) {
+    runtime[method] = (...args) => delegate[method](...args)
+  }
+  return runtime
+}
+
+export { normalizeConfig, cloneConfig, createMascotRuntime, resolveMascotProfile, isCustomPet, petAssetUrls };

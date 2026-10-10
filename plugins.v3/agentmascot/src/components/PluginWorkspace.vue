@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, useId } from 'vue'
 import MascotPreview from './MascotPreview.vue'
+import PetLibrary from './PetLibrary.vue'
 import { hostProps } from '../props.js'
 import { createConfigController } from '../config-controller.js'
 import { MASCOT_OPTIONS, resolveMascotProfile, startAgentMascotPatchEntry } from '../runtime.js'
@@ -11,6 +12,7 @@ const emit = defineEmits(['close', 'layout'])
 const activeTab = ref(props.mode === 'config' ? 'overview' : 'preview')
 const visible = ref(true)
 const discardPrompt = ref(false)
+const libraryBusy = ref(false)
 const fieldId = useId()
 const session = ref({ mounted: false, syncing: true, nativeEntryAvailable: false })
 const tabs = [
@@ -28,9 +30,10 @@ const controller = createConfigController({
   },
 })
 const { state, dirty } = controller
-const profile = computed(() => resolveMascotProfile(state.draft.mascot))
-const savedProfile = computed(() => resolveMascotProfile(state.saved.mascot))
-const busy = computed(() => state.loading || state.saving)
+const profile = computed(() => resolveMascotProfile(state.draft.mascot, state.pets))
+const savedProfile = computed(() => resolveMascotProfile(state.saved.mascot, state.pets))
+const previewConfig = computed(() => ({ ...state.draft, _pet: state.pets.find(pet => pet.id === state.draft.mascot) }))
+const busy = computed(() => state.loading || state.saving || libraryBusy.value)
 const controlsDisabled = computed(() => !state.ready || busy.value || state.pendingReadback)
 const feedback = computed(() => state.saving ? '正在保存并回读配置…' : state.loading ? '正在读取配置…' : state.error || (dirty.value ? '有未保存修改，保存后应用到桌宠。' : state.notice || '配置已同步。'))
 let sessionTimer
@@ -66,9 +69,17 @@ async function refresh() {
   }
 }
 function close() {
-  if (state.saving) return
+  if (state.saving || libraryBusy.value) return
   if (dirty.value || state.pendingReadback) discardPrompt.value = true
   else emit('close')
+}
+function imported(pet) {
+  state.pets = [...state.pets.filter(item => item.id !== pet.id), pet]
+  controller.edit('mascot', pet.id)
+}
+function removed(id) {
+  state.pets = state.pets.filter(pet => pet.id !== id)
+  if (state.draft.mascot === id) controller.edit('mascot', state.saved.mascot)
 }
 function deactivate() {
   visible.value = false
@@ -99,13 +110,13 @@ onBeforeUnmount(deactivate)
       <div class="am-brand"><div class="am-brand-avatar"><img :src="profile.icon" alt="" /></div><div><h2>{{ mode === 'config' ? '桌宠设置' : 'Agent 桌宠' }}</h2><p>{{ currentTab.description }}</p></div></div>
       <div class="am-header-actions">
         <VChip class="am-enabled-chip" size="small" :color="state.ready && state.saved.enabled ? 'success' : 'default'" variant="tonal">{{ !state.ready ? '待读取' : state.saved.enabled ? '已启用' : '已停用' }}</VChip>
-        <VBtn icon="mdi-refresh" size="small" variant="text" :loading="state.loading" :disabled="state.saving" aria-label="刷新状态" title="刷新状态" @click="refresh" />
-        <VBtn v-if="mode !== 'app'" icon="mdi-close" size="small" variant="text" :disabled="state.saving" aria-label="关闭" title="关闭" @click="close" />
+        <VBtn icon="mdi-refresh" size="small" variant="text" :loading="state.loading" :disabled="state.saving || libraryBusy" aria-label="刷新状态" title="刷新状态" @click="refresh" />
+        <VBtn v-if="mode !== 'app'" icon="mdi-close" size="small" variant="text" :disabled="state.saving || libraryBusy" aria-label="关闭" title="关闭" @click="close" />
       </div>
     </header>
     <div class="am-body">
       <nav class="am-nav" aria-label="桌宠设置导航">
-        <VList nav density="compact" class="am-nav-list"><VListItem v-for="tab in tabs" :key="tab.key" :active="activeTab === tab.key" color="primary" rounded="lg" :prepend-icon="tab.icon" :title="tab.label" @click="activeTab = tab.key" /></VList>
+        <VList nav density="compact" class="am-nav-list"><VListItem v-for="tab in tabs" :key="tab.key" :active="activeTab === tab.key" color="primary" rounded="lg" :prepend-icon="tab.icon" :title="tab.label" :disabled="state.saving || libraryBusy" @click="activeTab = tab.key" /></VList>
       </nav>
       <main class="am-content" :class="{ 'am-content--overview': activeTab === 'overview' }">
         <div v-if="!state.ready" class="am-empty" role="status">
@@ -142,18 +153,19 @@ onBeforeUnmount(deactivate)
           <div class="am-character-grid" role="group" aria-label="桌宠形象">
             <button v-for="option in MASCOT_OPTIONS" :key="option.value" type="button" class="am-character" :class="{ 'am-character--selected': state.draft.mascot === option.value }" :aria-pressed="state.draft.mascot === option.value" :disabled="controlsDisabled" @click="controller.edit('mascot', option.value)"><img :src="resolveMascotProfile(option.value).icon" alt="" /><strong>{{ option.value === 'kurisu' ? '克里斯蒂娜' : option.title }}</strong><VIcon v-if="state.draft.mascot === option.value" class="am-character-check" icon="mdi-check-circle" size="19" color="primary" /></button>
           </div>
+          <PetLibrary v-if="visible" :api="props.api" :plugin-id="props.pluginId" :pets="state.pets" :config="state.draft" :saved-id="state.saved.mascot" :disabled="!state.ready || state.loading || state.saving || state.pendingReadback" @select="controller.edit('mascot', $event)" @imported="imported" @removed="removed" @busy="libraryBusy = $event" />
           <div class="am-slider-grid">
             <section class="am-slider-card"><label :id="`${fieldId}-scale`">角色大小 <strong>{{ state.draft.scale.toFixed(2) }}×</strong></label><VSlider :model-value="state.draft.scale" :disabled="controlsDisabled" min="0.6" max="4" step="0.05" hide-details color="primary" :aria-labelledby="`${fieldId}-scale`" @update:model-value="controller.edit('scale', $event)" /><p>0.60× — 4.00×</p></section>
             <section class="am-slider-card"><label :id="`${fieldId}-speed`">移动速度 <strong>{{ state.draft.speed.toFixed(2) }}×</strong></label><VSlider :model-value="state.draft.speed" :disabled="controlsDisabled" min="0.4" max="2" step="0.05" hide-details color="primary" :aria-labelledby="`${fieldId}-speed`" @update:model-value="controller.edit('speed', $event)" /><p>0.40× — 2.00×</p></section>
           </div>
           <div class="am-behaviors"><VSwitch v-for="item in [{ key: 'follow_mouse', label: '跟随鼠标' }, { key: 'auto_roam', label: '自动游走' }, { key: 'shadow', label: '地面阴影' }]" :key="item.key" :model-value="state.draft[item.key]" :disabled="controlsDisabled" :label="item.label" hide-details inset density="compact" color="primary" @update:model-value="controller.edit(item.key, $event)" /></div>
         </template>
-        <MascotPreview v-else-if="activeTab === 'preview' && visible" :config="state.draft" />
+        <MascotPreview v-else-if="activeTab === 'preview' && visible" :config="previewConfig" />
       </main>
     </div>
     <footer class="am-footer">
       <template v-if="discardPrompt"><div class="am-feedback" role="alert">{{ state.pendingReadback ? '配置已提交但尚未确认，关闭不会撤回已提交内容。' : '关闭将放弃未保存的修改。' }}</div><div class="am-footer-actions"><VBtn variant="text" @click="discardPrompt = false">继续编辑</VBtn><VBtn variant="tonal" color="warning" @click="emit('close')">{{ state.pendingReadback ? '仍然关闭' : '放弃并关闭' }}</VBtn></div></template>
-      <template v-else><div class="am-feedback" :class="{ 'am-feedback--error': state.error }" aria-live="polite"><VIcon :icon="state.error ? 'mdi-alert-circle-outline' : dirty ? 'mdi-pencil-outline' : 'mdi-check-circle-outline'" size="18" /><span>{{ feedback }}</span></div><div class="am-footer-actions"><VBtn v-if="dirty" variant="text" :disabled="busy || state.pendingReadback" @click="controller.reset">撤销修改</VBtn><VBtn v-else-if="mode !== 'app'" variant="text" :disabled="state.saving" @click="close">关闭</VBtn><VBtn v-if="state.pendingReadback" variant="flat" color="primary" :loading="state.loading" @click="refresh">刷新确认</VBtn><VBtn v-else variant="flat" color="primary" prepend-icon="mdi-content-save-outline" :loading="state.saving" :disabled="!dirty || !state.ready || state.loading" @click="controller.save">保存设置</VBtn></div></template>
+      <template v-else><div class="am-feedback" :class="{ 'am-feedback--error': state.error }" aria-live="polite"><VIcon :icon="state.error ? 'mdi-alert-circle-outline' : dirty ? 'mdi-pencil-outline' : 'mdi-check-circle-outline'" size="18" /><span>{{ feedback }}</span></div><div class="am-footer-actions"><VBtn v-if="dirty" variant="text" :disabled="busy || state.pendingReadback" @click="controller.reset">撤销修改</VBtn><VBtn v-else-if="mode !== 'app'" variant="text" :disabled="state.saving" @click="close">关闭</VBtn><VBtn v-if="state.pendingReadback" variant="flat" color="primary" :loading="state.loading" @click="refresh">刷新确认</VBtn><VBtn v-else variant="flat" color="primary" prepend-icon="mdi-content-save-outline" :loading="state.saving" :disabled="!dirty || !state.ready || state.loading || libraryBusy" @click="controller.save">保存设置</VBtn></div></template>
     </footer>
   </section>
 </template>

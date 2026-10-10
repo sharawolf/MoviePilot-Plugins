@@ -67,12 +67,19 @@ test('real Config component connects navigation, discard protection, host save a
   globalThis.document = { hidden: false, addEventListener: (_, cb) => listeners.add(cb), removeEventListener: (_, cb) => listeners.delete(cb) }
   globalThis.ResizeObserver = class { observe() { observers++ } disconnect() { observers-- } }
   let persisted = { enabled: true, mascot: 'kurisu', scale: 1.55, speed: 1, replace_agent_entry: true }
+  let pets = []
+  const importedPet = { id: `pet_${'a'.repeat(32)}`, name: '导入样本', version: 2, rows: 11, icon: '', sprite_url: 'data:image/png;base64,test' }
   let writes = 0
   const events = []
   const app = renderer.createApp(Config, {
     pluginId: 'AgentMascot_clone', initialConfig: persisted,
     api: {
-      get: async () => ({ success: true, message: '', data: { config: persisted } }),
+      get: async () => ({ success: true, message: '', data: { config: persisted, pets } }),
+      post: async (path, form) => {
+        assert.ok(form instanceof FormData)
+        if (path.endsWith('/import')) pets = [importedPet]
+        return { success: true, message: '', data: { pet: importedPet } }
+      },
       put: async (path, data) => { assert.equal(path, 'plugin/AgentMascot_clone'); writes++; persisted = data; return { success: true, message: '', data: null } },
     },
     onLayout: value => events.push(value), onClose: () => events.push('close'),
@@ -112,6 +119,26 @@ test('real Config component connects navigation, discard protection, host save a
     assert.equal(observers, 1)
     assert.ok(frames.size > 0)
     assert.ok(text(root).includes('单个动作') && text(root).includes('连续行为'))
+    await nav('运行总览')
+    assert.equal(observers, 0)
+    assert.equal(frames.size, 0)
+    await nav('形象与行为')
+    find(n => n.props['aria-label'] === '选择 Pet 压缩包').props.onChange({ target: { files: [new File(['zip'], 'pet.zip')], value: 'pet.zip' } })
+    await flush()
+    assert.ok(text(root).includes('导入样本'))
+    assert.equal(observers, 1)
+    find(n => n.props['data-component'] === 'VBtn' && text(n) === '保存到角色库').props.onClick()
+    await flush()
+    assert.equal(observers, 0)
+    assert.equal(persisted.mascot, 'kurisu')
+    find(n => n.props['data-component'] === 'VBtn' && text(n) === '保存设置').props.onClick()
+    await flush()
+    assert.equal(persisted.mascot, importedPet.id)
+    await nav('动作预览')
+    await flush()
+    assert.ok(text(root).includes('Pet 原生动作'))
+    assert.ok(!text(root).includes('连续行为'))
+    assert.equal(observers, 1)
     await nav('运行总览')
     assert.equal(observers, 0)
     assert.equal(frames.size, 0)

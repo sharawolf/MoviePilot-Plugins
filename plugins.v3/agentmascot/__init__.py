@@ -1,13 +1,12 @@
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-
-from fastapi import Body
-from fastapi.responses import Response
+from typing import Annotated, Any
 
 from app.sdk.plugin import _PluginBase
+from fastapi import Body, File, UploadFile
+from fastapi.responses import Response
+
 from .api import AgentMascotApi
 from .config import apply_config_state, current_config_state
-from .models import PublicStatusResponse, StatusResponse
 from .manifest import (
     AUTH_LEVEL,
     AUTHOR_URL,
@@ -22,11 +21,19 @@ from .manifest import (
     SIDEBAR_NAV_SECTION,
     SIDEBAR_NAV_TITLE,
 )
+from .models import (
+    DeleteResponse,
+    PetListResponse,
+    PetResponse,
+    PublicStatusResponse,
+    StatusResponse,
+)
+from .pets import PET_ID, PET_LOCK, PetStore
 
 
 class AgentMascot(_PluginBase):
     """
-    MoviePilot Agent 桌宠形象 demo。
+    Agent 桌宠与 Codex Pet 角色库。
     """
 
     plugin_name = PLUGIN_NAME
@@ -39,24 +46,36 @@ class AgentMascot(_PluginBase):
     plugin_order = PLUGIN_ORDER
     auth_level = AUTH_LEVEL
 
-    def init_plugin(self, config: dict = None):
-        self._api = AgentMascotApi(self, Path(__file__).resolve().parent)
-        apply_config_state(self, config)
-        self._save_config()
+    def init_plugin(self, config: dict | None = None):
+        with PET_LOCK:
+            self._pets = PetStore(self.get_data_path())
+            self._api = AgentMascotApi(self, Path(__file__).resolve().parent)
+            apply_config_state(self, config)
+            self._save_config()
 
     def get_state(self) -> bool:
         return bool(getattr(self, "_enabled", False))
 
     @staticmethod
-    def get_render_mode() -> Tuple[str, str]:
+    def get_render_mode() -> tuple[str, str]:
         return "vue", "dist/assets"
 
     @staticmethod
-    def get_command() -> List[Dict[str, Any]]:
+    def get_command() -> list[dict[str, Any]]:
         return []
 
-    def get_api(self) -> List[Dict[str, Any]]:
+    def get_api(self) -> list[dict[str, Any]]:
         return [
+            {"path": "/pets", "endpoint": self.list_pets, "methods": ["GET"],
+             "auth": "bear", "response_model": PetListResponse, "summary": "列出导入角色"},
+            {"path": "/pets/inspect", "endpoint": self.inspect_pet, "methods": ["POST"],
+             "auth": "bear", "response_model": PetResponse, "summary": "预览 Codex Pet ZIP"},
+            {"path": "/pets/import", "endpoint": self.import_pet, "methods": ["POST"],
+             "auth": "bear", "response_model": PetResponse, "summary": "保存 Codex Pet ZIP"},
+            {"path": "/pets/{pet_id}", "endpoint": self.delete_pet, "methods": ["DELETE"],
+             "auth": "bear", "response_model": DeleteResponse, "summary": "移除未使用的导入角色"},
+            {"path": "/pets/{pet_id}/image", "endpoint": self.pet_image, "methods": ["GET"],
+             "allow_anonymous": True, "summary": "读取内容寻址的桌宠图片"},
             {
                 "path": "/status",
                 "endpoint": self.get_status,
@@ -90,13 +109,13 @@ class AgentMascot(_PluginBase):
             },
         ]
 
-    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+    def get_form(self) -> tuple[list[dict], dict[str, Any]]:
         return [], self._current_config()
 
-    def get_page(self) -> List[dict]:
+    def get_page(self) -> list[dict]:
         return []
 
-    def get_sidebar_nav(self) -> List[Dict[str, Any]]:
+    def get_sidebar_nav(self) -> list[dict[str, Any]]:
         if not self.get_state() or not getattr(self, "_show_sidebar_nav", True):
             return []
         return [
@@ -113,7 +132,7 @@ class AgentMascot(_PluginBase):
     def stop_service(self):
         pass
 
-    def _current_config(self) -> Dict[str, Any]:
+    def _current_config(self) -> dict[str, Any]:
         return current_config_state(self)
 
     def _save_config(self) -> None:
@@ -128,5 +147,27 @@ class AgentMascot(_PluginBase):
     def get_loader(self) -> Response:
         return self._api.get_loader()
 
-    def save_config_api(self, config: dict = Body(...)) -> StatusResponse:
-        return self._api.save_config(config)
+    def save_config_api(self, config: Annotated[dict, Body()]) -> StatusResponse:
+        with PET_LOCK:
+            selected = str(config.get("mascot", ""))
+            if PET_ID.fullmatch(selected):
+                try:
+                    self._pets.get(selected)
+                except ValueError:
+                    return StatusResponse(success=False, message="请先导入此角色。")
+            return self._api.save_config(config)
+
+    def list_pets(self) -> PetListResponse:
+        return self._api.list_pets()
+
+    def inspect_pet(self, file: Annotated[UploadFile, File()]) -> PetResponse:
+        return self._api.import_pet(file)
+
+    def import_pet(self, file: Annotated[UploadFile, File()]) -> PetResponse:
+        return self._api.import_pet(file, save=True)
+
+    def delete_pet(self, pet_id: str) -> DeleteResponse:
+        return self._api.delete_pet(pet_id)
+
+    def pet_image(self, pet_id: str) -> Response:
+        return self._api.pet_image(pet_id)

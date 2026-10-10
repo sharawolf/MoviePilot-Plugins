@@ -14,9 +14,10 @@ from app.plugins.agentmascot.models import StatusResponse
 
 
 @pytest.fixture
-def plugin(monkeypatch):
+def plugin(monkeypatch, tmp_path):
     saved = []
     monkeypatch.setattr(AgentMascot, "update_config", lambda self, config: saved.append(dict(config)))
+    monkeypatch.setattr(AgentMascot, "get_data_path", lambda self: tmp_path)
     # The mascot uses no host chain; isolate those startup-only services here.
     # Actual base construction is covered by the target host install/reload.
     instance = object.__new__(AgentMascot)
@@ -83,7 +84,7 @@ def test_repeat_init_stop_and_disable(plugin):
     assert plugin.get_sidebar_nav() == []
     plugin.init_plugin({"enabled": True, "mascot": "kurisu"})
     assert len(plugin.get_sidebar_nav()) == 1
-    assert len({route["path"] for route in plugin.get_api()}) == 4
+    assert len({route["path"] for route in plugin.get_api()}) == 9
 
 
 def test_classic_loader_is_self_contained(client):
@@ -94,7 +95,8 @@ def test_classic_loader_is_self_contained(client):
     assert "application/javascript" in response.headers["content-type"]
     code = response.text
     assert not any(line.startswith(("import ", "export ")) for line in code.splitlines())
-    assert code.endswith("startAgentMascotPatchEntry();\n")
+    assert "startAgentMascotPatchEntry();" in code
+    assert "createCodexPetRuntime" in code
     assert "localStorage" not in code
     result = subprocess.run(["node", "--check"], input=code, encoding="utf-8",
                             capture_output=True, check=False)

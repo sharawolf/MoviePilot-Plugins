@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { resolve, basename } from 'node:path'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
-const runtimeFiles = ['runtime-BCybTabx.js', 'agentmascot-loader.js', 'provider-mBbtEwEX.js', 'plugin-entry.js']
+const runtimeFiles = ['runtime-BCybTabx.js', 'agentmascot-loader.js', 'provider-mBbtEwEX.js', 'plugin-entry.js', 'mascot-runtime.js', 'codex-pet.js']
 
 export default defineConfig({
   // Federation 1.4.1 needs a root base to emit imports relative to remoteEntry.

@@ -1,4 +1,5 @@
-import { n as normalizeConfig, D as DEFAULT_CONFIG, e as createMascotRuntime, V as VIEWPORT_PADDING, f as buildSurfaceLanes } from './runtime-BCybTabx.js';
+import { D as DEFAULT_CONFIG, V as VIEWPORT_PADDING, f as buildSurfaceLanes } from './runtime-BCybTabx.js';
+import { normalizeConfig, createMascotRuntime } from './mascot-runtime.js';
 
 const ROOT_CLASS = 'agentmascot-plugin-root';
 const SHADOW_CLASS = 'agentmascot-plugin-shadow';
@@ -57,12 +58,13 @@ function render() {
   if (!root || !img || !runtime) return
   const state = runtime.renderState();
   root.style.width = `${state.size}px`;
-  root.style.height = `${state.size}px`;
+  root.style.height = `${state.height || state.size}px`;
   root.style.transform = [
     `translate3d(${state.left}px, ${state.top}px, 0)`,
-    `scaleX(${runtime.pet.lookRight ? -1 : 1})`,
+    `scaleX(${state.flipX ?? (runtime.pet.lookRight ? -1 : 1)})`,
   ].join(' ');
   img.src = state.frame;
+  Object.assign(img.style, { position: 'static', width: '100%', height: '100%', maxWidth: '100%', objectFit: 'contain', left: '0', top: '0' }, state.imageStyle || {});
   if (shadow) shadow.style.display = runtime.config().shadow ? 'block' : 'none';
 }
 
@@ -143,7 +145,10 @@ function createRoot() {
     'z-index:-1',
   ].join(';');
 
-  nextRoot.append(img, shadow);
+  const crop = container.ownerDocument.createElement('span');
+  crop.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none';
+  crop.append(img);
+  nextRoot.append(crop, shadow);
   return nextRoot
 }
 

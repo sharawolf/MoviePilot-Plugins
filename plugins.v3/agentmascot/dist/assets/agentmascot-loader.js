@@ -1,4 +1,5 @@
-import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, n as normalizeConfig, D as DEFAULT_CONFIG, e as createMascotRuntime } from './runtime-BCybTabx.js';
+import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js';
+import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls } from './mascot-runtime.js';
 import { u as unwrapResponse } from './provider-mBbtEwEX.js';
 
 const ENTRY_SELECTOR = '.agent-assistant-fab';
@@ -153,8 +154,9 @@ function createGlobalDomAdapter(options = {}) {
     const state = runtime().renderState();
     const pet = runtime().pet;
     root.style.width = `${state.size}px`;
-    root.style.height = `${state.size}px`;
-    root.style.transform = `translate3d(${state.left}px, ${state.top}px, 0) scaleX(${pet.lookRight ? -1 : 1})`;
+    root.style.height = `${state.height || state.size}px`;
+    root.style.transform = `translate3d(${state.left}px, ${state.top}px, 0) scaleX(${state.flipX ?? (pet.lookRight ? -1 : 1)})`;
+    Object.assign(img.style, { position: 'static', width: '100%', height: '100%', maxWidth: '100%', objectFit: 'contain', left: '0', top: '0' }, state.imageStyle || {});
     img.src = state.frame;
     shadow.style.display = runtime().config().shadow ? 'block' : 'none';
   }
@@ -242,7 +244,10 @@ function createGlobalDomAdapter(options = {}) {
     img.alt = '';
     shadow = env.document.createElement('span');
     shadow.className = 'agentmascot-global-shadow';
-    root.append(img, shadow);
+    const crop = env.document.createElement('span');
+    crop.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none';
+    crop.append(img);
+    root.append(crop, shadow);
     env.document.body.appendChild(root);
     env.document.addEventListener('pointermove', onPointerMove, { passive: true });
     root.addEventListener('pointerdown', startDrag);
@@ -284,7 +289,7 @@ async function loadMoviePilotPluginConfig(pluginId, options = {}) {
     const payload = await options.api.get(`plugin/${pluginId}/status`, { feedback: 'silent' });
     const data = unwrapResponse(payload);
     if (!data?.config) throw new Error('AgentMascot status has no config')
-    return normalizeConfig(data.config)
+    return normalizeConfig({ ...data.config, _pet: petAssetUrls(data.pet, options.env || globalThis) })
   }
   const env = options.env || globalThis;
   const fetchImpl = options.fetchImpl || env.fetch?.bind(env);
@@ -295,7 +300,7 @@ async function loadMoviePilotPluginConfig(pluginId, options = {}) {
   if (!response.ok) throw new Error(`${pluginId} status ${response.status}`)
   const data = unwrapResponse(await response.json());
   if (!data?.config) throw new Error('AgentMascot status has no config')
-  return normalizeConfig(data.config)
+  return normalizeConfig({ ...data.config, _pet: petAssetUrls(data.pet, env) })
 }
 
 const PLUGIN_ID = 'AgentMascot';
@@ -314,7 +319,7 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   let configTimer = 0;
   let mounted = false;
   let runtime = null;
-  const isEnabled = () => Boolean(config.enabled && config.replace_agent_entry);
+  const isEnabled = () => Boolean(config.enabled && config.replace_agent_entry && (!isCustomPet(config.mascot) || config._pet));
   const agentEntry = createMoviePilotAgentEntry({
     env,
     hiddenClass: HIDDEN_CLASS,

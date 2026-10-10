@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { buildSurfaceLanes, createMascotRuntime, resolveMascotProfile } from '../runtime.js'
+import { buildSurfaceLanes, createMascotRuntime, resolveMascotProfile, isCustomPet } from '../runtime.js'
 import { actionGroups, actionLabels } from '../actions.js'
 
 const props = defineProps({ config: { type: Object, required: true } })
@@ -9,7 +9,8 @@ const paused = ref(false)
 const kind = ref('action')
 const frame = shallowRef(null)
 const metrics = shallowRef({})
-const profile = computed(() => resolveMascotProfile(props.config.mascot))
+const profile = computed(() => resolveMascotProfile(props.config.mascot, props.config._pet ? [props.config._pet] : []))
+const custom = computed(() => isCustomPet(props.config.mascot))
 const groups = computed(() => actionGroups(props.config.mascot, kind.value))
 let runtime
 let observer
@@ -61,12 +62,13 @@ function click() {
   if (!paused.value && !runtime?.shouldSuppressClick()) runtime?.celebrate()
 }
 const petStyle = computed(() => frame.value ? {
-  width: `${frame.value.size}px`, height: `${frame.value.size}px`,
-  transform: `translate3d(${frame.value.left}px, ${frame.value.top}px, 0) scaleX(${runtime?.pet.lookRight ? -1 : 1})`,
+  width: `${frame.value.size}px`, height: `${frame.value.height || frame.value.size}px`,
+  transform: `translate3d(${frame.value.left}px, ${frame.value.top}px, 0) scaleX(${frame.value.flipX ?? (runtime?.pet.lookRight ? -1 : 1)})`,
 } : {})
 const number = value => Number.isFinite(value) ? value.toFixed(1) : '—'
 
 watch(() => props.config, () => { runtime?.updateConfig(previewConfig()); render() }, { deep: true })
+watch(custom, () => { kind.value = 'action' })
 watch(paused, updateActivity)
 onMounted(() => {
   mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -116,15 +118,16 @@ onBeforeUnmount(() => {
         <button v-if="frame" class="am-pet" :class="{ 'am-pet--shadow': config.shadow }" :style="petStyle" type="button" :aria-label="`与${profile.label}互动`"
           @pointerdown="dragStart" @pointermove="runtime?.moveDrag(point($event), $event.movementX || 0)"
           @pointerup="dragEnd" @pointercancel="dragEnd" @click="click">
-          <img :src="frame.frame" alt="" draggable="false" />
+          <span class="am-pet-frame"><img :src="frame.frame" :style="frame.imageStyle" alt="" draggable="false" /></span>
         </button>
         <div class="am-stage-ground" aria-hidden="true" />
       </div>
       <section class="am-action-panel" aria-label="动作测试">
         <div class="am-subtabs" role="tablist" aria-label="测试分类">
-          <button v-for="tab in [{ id: 'action', label: '单个动作' }, { id: 'behavior', label: '连续行为' }]" :key="tab.id" type="button" role="tab" :aria-selected="kind === tab.id" :class="{ 'am-selected': kind === tab.id }" @click="kind = tab.id">{{ tab.label }}</button>
+          <button v-for="tab in [{ id: 'action', label: '单个动作' }, ...(!custom ? [{ id: 'behavior', label: '连续行为' }] : [])]" :key="tab.id" type="button" role="tab" :aria-selected="kind === tab.id" :class="{ 'am-selected': kind === tab.id }" @click="kind = tab.id">{{ tab.label }}</button>
         </div>
         <p v-if="paused" class="am-hint">继续预览后可以测试动作。</p>
+        <p v-if="custom" class="am-hint">按原素材播放；爬墙、吸顶和睡觉不适用。{{ config._pet?.version === 2 ? '开启跟随鼠标可体验视线方向。' : '' }}</p>
         <div class="am-action-scroll">
           <div v-for="group in groups" :key="group.id" class="am-action-group">
             <h4>{{ group.title }}</h4>

@@ -11,8 +11,8 @@
   },
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "test": "node --test ../../tests/v3/agentmascot/test_runtime.mjs ../../tests/v3/agentmascot/test_ui.mjs ../../tests/v3/agentmascot/test_components.mjs ../../tests/v3/agentmascot/test_bundle.mjs",
+    "build": "node build.mjs",
+    "test": "node --test ../../tests/v3/agentmascot/test_runtime.mjs ../../tests/v3/agentmascot/test_ui.mjs ../../tests/v3/agentmascot/test_components.mjs ../../tests/v3/agentmascot/test_bundle.mjs ../../tests/v3/agentmascot/test_pet_ui.mjs",
     "check:runtime": "node --check dist/assets/agentmascot-loader.js"
   },
   "dependencies": {

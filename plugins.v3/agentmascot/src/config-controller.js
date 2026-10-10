@@ -1,5 +1,5 @@
 import { computed, reactive } from 'vue'
-import { cloneConfig, unwrapResponse } from './runtime.js'
+import { cloneConfig, unwrapResponse, petAssetUrls } from './runtime.js'
 
 const fingerprint = config => JSON.stringify(cloneConfig(config))
 const cancelled = error => error?.name === 'AbortError' || error?.code === 'ERR_CANCELED'
@@ -9,7 +9,7 @@ export function createConfigController({ api, pluginId, initialConfig = null, on
   const state = reactive({
     draft: cloneConfig(initialConfig), saved: cloneConfig(initialConfig),
     ready: Boolean(initialConfig && 'enabled' in initialConfig),
-    loading: false, saving: false, error: '', notice: '', pendingReadback: false,
+    loading: false, saving: false, error: '', notice: '', pendingReadback: false, pets: [],
   })
   const dirty = computed(() => fingerprint(state.draft) !== fingerprint(state.saved))
   let active = true
@@ -23,7 +23,7 @@ export function createConfigController({ api, pluginId, initialConfig = null, on
     requireClient('get')
     const data = unwrapResponse(await api.get(`plugin/${pluginId}/status`, { feedback: 'silent' }))
     if (!data?.config || typeof data.config.enabled !== 'boolean') throw new Error('未取得有效配置，请稍后刷新。')
-    return cloneConfig(data.config)
+    return { config: cloneConfig(data.config), pets: (data.pets || []).map(pet => petAssetUrls(pet)) }
   }
 
   function accept(config, submitted = null) {
@@ -41,8 +41,9 @@ export function createConfigController({ api, pluginId, initialConfig = null, on
     state.loading = true
     state.error = ''
     try {
-      const config = await readStatus()
+      const { config, pets } = await readStatus()
       if (!active || request !== generation) return false
+      state.pets = pets
       const preserved = accept(config)
       state.notice = preserved && dirty.value ? '已刷新已保存配置，当前修改仍保留。' : '已读取最新配置。'
       return true
@@ -67,8 +68,9 @@ export function createConfigController({ api, pluginId, initialConfig = null, on
       unwrapResponse(await api.put(`plugin/${pluginId}`, submitted, { feedback: 'silent' }))
       acknowledged = true
       if (!active || request !== generation) return false
-      const config = await readStatus()
+      const { config, pets } = await readStatus()
       if (!active || request !== generation) return false
+      state.pets = pets
       accept(config, submitted)
       state.notice = dirty.value ? '本次设置已保存，后续修改尚未保存。' : '设置已保存并回读确认。'
       // UI/session coordination must not turn a confirmed save into a failure.

@@ -1,8 +1,9 @@
 import math
-from typing import Any, Dict, Mapping, Optional
+import re
+from collections.abc import Mapping
+from typing import Any
 
-
-DEFAULT_CONFIG: Dict[str, Any] = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": False,
     "mascot": "chibiterasu",
     "replace_agent_entry": True,
@@ -42,12 +43,12 @@ def clamp_number(value: Any, minimum: float, maximum: float, default: float) -> 
     return min(max(number, minimum), maximum) if math.isfinite(number) else default
 
 
-def normalize_config(config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+def normalize_config(config: Mapping[str, Any] | None = None) -> dict[str, Any]:
     raw_config = config or {}
     mascot = str(raw_config.get("mascot", DEFAULT_CONFIG["mascot"]))
     normalized = {
         "enabled": bool(raw_config.get("enabled", DEFAULT_CONFIG["enabled"])),
-        "mascot": mascot if mascot in MASCOT_CHOICES else DEFAULT_CONFIG["mascot"],
+        "mascot": mascot if mascot in MASCOT_CHOICES or re.fullmatch(r"pet_[0-9a-f]{32}", mascot) else DEFAULT_CONFIG["mascot"],
         "replace_agent_entry": bool(raw_config.get("replace_agent_entry", DEFAULT_CONFIG["replace_agent_entry"])),
         "show_sidebar_nav": bool(raw_config.get("show_sidebar_nav", DEFAULT_CONFIG["show_sidebar_nav"])),
         "follow_mouse": bool(raw_config.get("follow_mouse", DEFAULT_CONFIG["follow_mouse"])),
@@ -59,14 +60,14 @@ def normalize_config(config: Optional[Mapping[str, Any]] = None) -> Dict[str, An
     return normalized
 
 
-def apply_config_state(target: Any, config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+def apply_config_state(target: Any, config: Mapping[str, Any] | None = None) -> dict[str, Any]:
     normalized = normalize_config(config)
     for key, attribute in CONFIG_ATTRIBUTES.items():
         setattr(target, attribute, normalized[key])
     return normalized
 
 
-def current_config_state(source: Any) -> Dict[str, Any]:
+def current_config_state(source: Any) -> dict[str, Any]:
     return {
         key: getattr(source, attribute, DEFAULT_CONFIG[key])
         for key, attribute in CONFIG_ATTRIBUTES.items()
