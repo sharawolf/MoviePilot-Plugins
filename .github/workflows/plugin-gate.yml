@@ -27,6 +27,15 @@ jobs:
       - name: Check frontend instance routing
         run: node --test tests/v3/*/*.test.mjs
 
+      - name: Build and test AgentMascot frontend
+        working-directory: plugins.v3/agentmascot
+        run: |
+          npm ci
+          npm run build
+          npm test
+          git diff --exit-code -- dist
+          test -z "$(git ls-files --others --exclude-standard dist)"
+
   plugin-test-gate:
     name: Plugin test gate
     runs-on: ubuntu-latest

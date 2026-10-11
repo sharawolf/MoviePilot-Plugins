@@ -1,0 +1,74 @@
+import math
+import re
+from collections.abc import Mapping
+from typing import Any
+
+DEFAULT_CONFIG: dict[str, Any] = {
+    "enabled": False,
+    "mascot": "chibiterasu",
+    "replace_agent_entry": True,
+    "show_sidebar_nav": True,
+    "scale": 1.0,
+    "speed": 1.0,
+    "follow_mouse": True,
+    "auto_roam": True,
+    "shadow": True,
+}
+
+CONFIG_ATTRIBUTES = {
+    "enabled": "_enabled",
+    "mascot": "_mascot",
+    "replace_agent_entry": "_replace_agent_entry",
+    "show_sidebar_nav": "_show_sidebar_nav",
+    "scale": "_scale",
+    "speed": "_speed",
+    "follow_mouse": "_follow_mouse",
+    "auto_roam": "_auto_roam",
+    "shadow": "_shadow",
+}
+
+NUMERIC_BOUNDS = {
+    "scale": (0.6, 4.0, 1.0),
+    "speed": (0.4, 2.0, 1.0),
+}
+
+MASCOT_CHOICES = {"chibiterasu", "nailong", "kurisu"}
+
+
+def clamp_number(value: Any, minimum: float, maximum: float, default: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return min(max(number, minimum), maximum) if math.isfinite(number) else default
+
+
+def normalize_config(config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    raw_config = config or {}
+    mascot = str(raw_config.get("mascot", DEFAULT_CONFIG["mascot"]))
+    normalized = {
+        "enabled": bool(raw_config.get("enabled", DEFAULT_CONFIG["enabled"])),
+        "mascot": mascot if mascot in MASCOT_CHOICES or re.fullmatch(r"pet_[0-9a-f]{32}", mascot) else DEFAULT_CONFIG["mascot"],
+        "replace_agent_entry": bool(raw_config.get("replace_agent_entry", DEFAULT_CONFIG["replace_agent_entry"])),
+        "show_sidebar_nav": bool(raw_config.get("show_sidebar_nav", DEFAULT_CONFIG["show_sidebar_nav"])),
+        "follow_mouse": bool(raw_config.get("follow_mouse", DEFAULT_CONFIG["follow_mouse"])),
+        "auto_roam": bool(raw_config.get("auto_roam", DEFAULT_CONFIG["auto_roam"])),
+        "shadow": bool(raw_config.get("shadow", DEFAULT_CONFIG["shadow"])),
+    }
+    for key, (minimum, maximum, default) in NUMERIC_BOUNDS.items():
+        normalized[key] = clamp_number(raw_config.get(key), minimum, maximum, default)
+    return normalized
+
+
+def apply_config_state(target: Any, config: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    normalized = normalize_config(config)
+    for key, attribute in CONFIG_ATTRIBUTES.items():
+        setattr(target, attribute, normalized[key])
+    return normalized
+
+
+def current_config_state(source: Any) -> dict[str, Any]:
+    return {
+        key: getattr(source, attribute, DEFAULT_CONFIG[key])
+        for key, attribute in CONFIG_ATTRIBUTES.items()
+    }

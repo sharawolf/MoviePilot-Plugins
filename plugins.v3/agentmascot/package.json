@@ -1,0 +1,27 @@
+{
+  "name": "moviepilot-agentmascot-plugin",
+  "private": true,
+  "version": "3.0.0",
+  "author": "ifsherlock & Kurisu",
+  "homepage": "https://github.com/z2561221/MoviePilot-Plugins",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/z2561221/MoviePilot-Plugins.git",
+    "directory": "plugins.v3/agentmascot"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test ../../tests/v3/agentmascot/test_*.mjs",
+    "check:runtime": "node --check dist/assets/agentmascot-loader.js"
+  },
+  "dependencies": {
+    "vue": "3.5.39",
+    "vuetify": "3.7.3"
+  },
+  "devDependencies": {
+    "@originjs/vite-plugin-federation": "1.4.1",
+    "@vitejs/plugin-vue": "5.2.4",
+    "vite": "5.4.21"
+  }
+}
