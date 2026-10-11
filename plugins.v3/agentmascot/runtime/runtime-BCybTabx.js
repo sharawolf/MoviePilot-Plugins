@@ -1966,6 +1966,11 @@ function createMascotRuntime(options = {}) {
     setAction('stand', timestamp, { force: true, duration: 700 });
   }
 
+  function finishFrame() {
+    onUpdate();
+    rafId = scheduler.requestAnimationFrame?.(animate) || 0;
+  }
+
   function advancePose(elapsedTicks) {
     actionState.poseTicks += elapsedTicks;
     const poses = currentAction().poses;
@@ -2382,10 +2387,12 @@ function createMascotRuntime(options = {}) {
             const nextDistance = Math.abs(targetX - pet.anchorX);
             if (GROUND_MOVE_ACTIONS.includes(actionState.name) && noteMoveProgress(nextDistance)) {
               recoverGroundMove(timestamp);
+              finishFrame();
               return
             }
             if (pet.state === 'toWall' && isAtWallApproach(pet.wallSide)) {
               startWall(pet.wallSide, timestamp);
+              finishFrame();
               return
             }
             updateGroundAction(distance, timestamp, isMouseFresh);
@@ -2409,8 +2416,7 @@ function createMascotRuntime(options = {}) {
 
     pet.anchorX = clampAnchorX$1(pet.anchorX);
     pet.anchorY = clampAnchorY$1(pet.anchorY);
-    onUpdate();
-    rafId = scheduler.requestAnimationFrame?.(animate) || 0;
+    finishFrame();
   }
 
   function start() {

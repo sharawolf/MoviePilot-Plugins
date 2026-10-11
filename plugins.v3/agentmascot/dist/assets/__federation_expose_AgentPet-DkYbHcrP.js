@@ -1,8 +1,8 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import './runtime-BCybTabx.js?v=d9a72ff120dfcb19';
-import './mascot-runtime.js?v=d9a72ff120dfcb19';
-import { startAgentMascotStage } from './agentmascot-loader.js?v=d9a72ff120dfcb19';
-import './provider-mBbtEwEX.js?v=d9a72ff120dfcb19';
+import './runtime-BCybTabx.js?v=e491e0024a9bf3cc';
+import './mascot-runtime.js?v=e491e0024a9bf3cc';
+import { startAgentMascotStage } from './agentmascot-loader.js?v=e491e0024a9bf3cc';
+import './provider-mBbtEwEX.js?v=e491e0024a9bf3cc';
 
 const {openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode} = await importShared('vue');
 

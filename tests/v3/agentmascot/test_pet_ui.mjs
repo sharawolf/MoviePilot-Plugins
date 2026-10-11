@@ -110,6 +110,24 @@ test('native pet actions animate correct rows and release RAF on stop', () => {
   assert.equal(h.frames.size, 0)
 })
 
+test('repeated jump requests preserve the original landing height until the arc finishes', () => {
+  const h = runtimeHarness(2, { anchorX: 180, anchorY: 400 })
+  h.resize({ width: 1200, height: 720 })
+  h.runtime.start()
+  let step = 0
+  for (let cycle = 0; cycle < 20; cycle++) {
+    assert.equal(h.runtime.playAction('jumping'), true)
+    for (let tick = 0; tick < 6; tick++) h.tick(step++ * 40)
+    const landingY = h.runtime.debugState().targetY
+    assert.equal(h.runtime.playAction('jumping'), false)
+    assert.equal(h.runtime.debugState().targetY, landingY)
+    for (let tick = 0; tick < 45; tick++) h.tick(step++ * 40)
+    assert.equal(h.runtime.renderState().top, 400)
+  }
+  h.runtime.stop()
+  assert.equal(h.frames.size, 0)
+})
+
 test('nearby pointers keep all gaze directions across animation frames and autonomous hop deadlines', () => {
   for (const scale of [.6, 1, 2, 4]) {
     const h = runtimeHarness(2, { anchorX: 500, anchorY: 500 })

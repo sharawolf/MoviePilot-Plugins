@@ -1,13 +1,13 @@
-import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js?v=d9a72ff120dfcb19';
-import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls, applyMascotImage } from './mascot-runtime.js?v=d9a72ff120dfcb19';
-import { u as unwrapResponse } from './provider-mBbtEwEX.js?v=d9a72ff120dfcb19';
-import { createPointerInput, viewportGeometry } from './pointer-input.js?v=d9a72ff120dfcb19';
+import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js?v=e491e0024a9bf3cc';
+import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls, applyMascotImage } from './mascot-runtime.js?v=e491e0024a9bf3cc';
+import { u as unwrapResponse } from './provider-mBbtEwEX.js?v=e491e0024a9bf3cc';
+import { createPointerInput, viewportGeometry } from './pointer-input.js?v=e491e0024a9bf3cc';
 
 const ENTRY_SELECTOR = '.agent-assistant-fab';
 const TRIGGER_SELECTOR = '.agent-assistant-fab__trigger';
 const PANEL_SELECTOR = '.agent-assistant-panel';
 // Replaced with a content digest in both distribution entry points at build time.
-const RUNTIME_REVISION = 'd9a72ff120dfcb19';
+const RUNTIME_REVISION = 'e491e0024a9bf3cc';
 
 function nativeAgentEntryStyle(hiddenClass) {
   return `

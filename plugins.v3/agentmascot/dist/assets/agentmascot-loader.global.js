@@ -1667,6 +1667,10 @@
       roamPausedUntil = pet.stateUntil;
       setAction("stand", timestamp, { force: true, duration: 700 });
     }
+    function finishFrame() {
+      onUpdate();
+      rafId = scheduler.requestAnimationFrame?.(animate) || 0;
+    }
     function advancePose(elapsedTicks) {
       actionState.poseTicks += elapsedTicks;
       const poses = currentAction().poses;
@@ -2060,10 +2064,12 @@
               const nextDistance = Math.abs(targetX - pet.anchorX);
               if (GROUND_MOVE_ACTIONS.includes(actionState.name) && noteMoveProgress(nextDistance)) {
                 recoverGroundMove(timestamp);
+                finishFrame();
                 return;
               }
               if (pet.state === "toWall" && isAtWallApproach(pet.wallSide)) {
                 startWall(pet.wallSide, timestamp);
+                finishFrame();
                 return;
               }
               updateGroundAction(distance, timestamp, isMouseFresh);
@@ -2086,8 +2092,7 @@
       }
       pet.anchorX = clampAnchorX$1(pet.anchorX);
       pet.anchorY = clampAnchorY$1(pet.anchorY);
-      onUpdate();
-      rafId = scheduler.requestAnimationFrame?.(animate) || 0;
+      finishFrame();
     }
     function start() {
       stop();
@@ -2358,6 +2363,7 @@
       state = next;
     }
     function beginJump(targetY = pet.anchorY) {
+      if (jump) return false;
       const d = dimensions();
       targetY = Math.max(0, Math.min(targetY, d.height - d.spriteHeight));
       jump = {
@@ -2371,6 +2377,7 @@
       followHopAfter = elapsed + jump.duration + 500;
       setState("jumping");
       pose2 = 0;
+      return true;
     }
     function update(dt) {
       elapsed += dt;
@@ -2458,8 +2465,7 @@
     function playAction(name) {
       name = ALIASES[name] || name;
       if (!STATES[name]) return false;
-      jump = null;
-      if (name === "jumping") beginJump();
+      if (jump || name === "jumping" && !beginJump()) return false;
       manual = { name, until: elapsed + (jump?.duration || frameCount(name) * frameMs(name)) };
       setState(name);
       poseElapsed = 0;
@@ -2776,7 +2782,7 @@
   const ENTRY_SELECTOR = ".agent-assistant-fab";
   const TRIGGER_SELECTOR = ".agent-assistant-fab__trigger";
   const PANEL_SELECTOR = ".agent-assistant-panel";
-  const RUNTIME_REVISION = "d9a72ff120dfcb19";
+  const RUNTIME_REVISION = "e491e0024a9bf3cc";
   function nativeAgentEntryStyle(hiddenClass) {
     return `
     .${hiddenClass} {

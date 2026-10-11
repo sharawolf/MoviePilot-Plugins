@@ -36,6 +36,7 @@ export function createCodexPetRuntime(options) {
     state = next
   }
   function beginJump(targetY = pet.anchorY) {
+    if (jump) return false
     const d = dimensions()
     targetY = Math.max(0, Math.min(targetY, d.height - d.spriteHeight))
     jump = { start: elapsed, from: pet.anchorY, to: targetY,
@@ -44,6 +45,7 @@ export function createCodexPetRuntime(options) {
     followHopAfter = elapsed + jump.duration + 500
     setState('jumping')
     pose = 0
+    return true
   }
   function update(dt) {
     elapsed += dt
@@ -129,8 +131,7 @@ export function createCodexPetRuntime(options) {
   function playAction(name) {
     name = ALIASES[name] || name
     if (!STATES[name]) return false
-    jump = null
-    if (name === 'jumping') beginJump()
+    if (jump || (name === 'jumping' && !beginJump())) return false
     manual = { name, until: elapsed + (jump?.duration || frameCount(name) * frameMs(name)) }
     setState(name)
     poseElapsed = 0

@@ -4,9 +4,53 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { u as unwrap } from '../../../plugins.v3/agentmascot/dist/assets/provider-mBbtEwEX.js';
 import { moviePilotApiUrl, loadMoviePilotPluginConfig, startAgentMascotPatchEntry, startAgentMascotStage, createMoviePilotAgentEntry } from '../../../plugins.v3/agentmascot/dist/assets/agentmascot-loader.js';
+import { createMascotRuntime } from '../../../plugins.v3/agentmascot/runtime/mascot-runtime.js';
 
 const envelope = config => ({ success: true, message: '', data: { config } });
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+function animationHarness() {
+  let serial = 0, timestamp = 0
+  const frames = new Map(), intervals = new Set()
+  const runtime = createMascotRuntime({ config: { mascot: 'kurisu', auto_roam: false, follow_mouse: false },
+    bounds: () => ({ width: 900, height: 420 }), now: () => timestamp, random: () => .4,
+    scheduler: {
+      setInterval(callback) { intervals.add(++serial); return serial },
+      clearInterval(id) { intervals.delete(id) },
+      requestAnimationFrame(callback) { frames.set(++serial, callback); return serial },
+      cancelAnimationFrame(id) { frames.delete(id) },
+    } })
+  return { runtime, frames, advance(ms = 33) {
+    timestamp += ms
+    const [id, callback] = frames.entries().next().value
+    frames.delete(id)
+    callback(timestamp)
+  } }
+}
+
+test('wall arrival keeps the animation frame loop scheduled', () => {
+  const h = animationHarness()
+  h.runtime.start()
+  h.runtime.playBehavior('goWall', { timestamp: 0 })
+  for (let tick = 0; tick < 300 && h.runtime.debugState().state !== 'wallHold'; tick++) h.advance()
+  assert.equal(h.runtime.debugState().surface, 'wall')
+  assert.equal(h.runtime.debugState().state, 'wallHold')
+  assert.equal(h.frames.size, 1)
+  h.runtime.stop()
+  assert.equal(h.frames.size, 0)
+})
+
+test('stagnant ground recovery keeps the animation frame loop scheduled', () => {
+  const h = animationHarness()
+  h.runtime.start()
+  h.runtime.playBehavior('roam', { timestamp: 0 })
+  h.runtime.pet.targetX = 2000
+  for (let tick = 0; tick < 420 && h.runtime.debugState().state !== 'rest'; tick++) h.advance()
+  assert.equal(h.runtime.debugState().state, 'rest')
+  assert.equal(h.frames.size, 1)
+  h.runtime.stop()
+  assert.equal(h.frames.size, 0)
+})
 
 test('V3 payload failures are not silently replaced with defaults', () => {
   assert.equal(unwrap(envelope({ mascot: 'kurisu' })).config.mascot, 'kurisu');
