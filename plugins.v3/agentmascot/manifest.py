@@ -1,7 +1,7 @@
 PLUGIN_NAME = "Agent 桌宠形象"
 PLUGIN_DESC = "为 MoviePilot V3 智能助手提供小天照、奶龙和克里斯蒂娜桌宠。"
 PLUGIN_ICON = "agentresourceofficer.png"
-PLUGIN_AUTHOR = "ifsherlock & 克里斯蒂娜"
+PLUGIN_AUTHOR = "ifsherlock & Kurisu"
 AUTHOR_URL = "https://github.com/z2561221"
 PLUGIN_CONFIG_PREFIX = "agentmascot_"
 PLUGIN_ORDER = 47

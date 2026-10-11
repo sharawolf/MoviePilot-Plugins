@@ -120,7 +120,7 @@
     "description": "为 MoviePilot V3 智能助手提供小天照、奶龙和克里斯蒂娜桌宠。",
     "version": "3.0.0",
     "icon": "agentresourceofficer.png",
-    "author": "ifsherlock & 克里斯蒂娜",
+    "author": "ifsherlock & Kurisu",
     "author_url": "https://github.com/z2561221",
     "level": 1,
     "system_version": ">=3.1.3",
