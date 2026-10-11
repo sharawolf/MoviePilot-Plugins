@@ -212,21 +212,23 @@ test('drag suppresses activation and custom config never serializes its image pa
 })
 
 test('imported pet keeps its initial and dropped height across animation and config polling', () => {
-  const h = runtimeHarness(2, { anchorX: 180, anchorY: 180 })
-  assert.equal(h.runtime.renderState().top, 180)
-  h.runtime.startDrag({ x: 200, y: 200 })
-  h.runtime.moveDrag({ x: 230, y: 100 }, 30)
-  h.runtime.endDrag()
-  assert.equal(h.runtime.renderState().top, 80)
-  assert.equal(h.runtime.renderState().left, 210)
-  h.update({ ...h.config, auto_roam: true, follow_mouse: false })
-  h.runtime.start()
-  for (let i = 1; i <= 120; i++) h.tick(i * 40)
-  assert.equal(h.runtime.renderState().top, 80)
-  assert.ok(h.runtime.renderState().left > 210)
-  h.update({ ...h.config, scale: 1.5 })
-  assert.equal(h.runtime.renderState().top, 80)
-  h.runtime.stop()
+  for (const sample of [0, 0.5]) {
+    const h = runtimeHarness(2, { anchorX: 180, anchorY: 180 }, () => sample)
+    assert.equal(h.runtime.renderState().top, 180)
+    h.runtime.startDrag({ x: 200, y: 200 })
+    h.runtime.moveDrag({ x: 230, y: 100 }, 30)
+    h.runtime.endDrag()
+    assert.equal(h.runtime.renderState().top, 80)
+    assert.equal(h.runtime.renderState().left, 210)
+    h.update({ ...h.config, auto_roam: true, follow_mouse: false })
+    h.runtime.start()
+    for (let i = 1; i <= 120; i++) h.tick(i * 40)
+    assert.equal(h.runtime.renderState().top, 80)
+    assert.notEqual(h.runtime.renderState().left, 210, 'auto roaming moves after the drop')
+    h.update({ ...h.config, scale: 1.5 })
+    assert.equal(h.runtime.renderState().top, 80)
+    h.runtime.stop()
+  }
 })
 
 test('viewport changes only constrain out-of-bounds coordinates and reset restores the initial position', () => {
@@ -358,7 +360,8 @@ test('mouse following can hop upward and downward without leaving the viewport',
 })
 
 test('autonomous roaming continues with following disabled and includes a hop', () => {
-  const h = runtimeHarness()
+  // Keep the timed movement check on a deterministic long roaming leg.
+  const h = runtimeHarness(2, undefined, () => 0.5)
   h.resize({ width: 2400, height: 600 })
   h.update({ ...h.config, auto_roam: true, follow_mouse: false })
   h.runtime.handlePointerMove({ x: 0, y: 0 })
