@@ -181,7 +181,7 @@ def test_original_asset_survives_and_metadata_agrees():
     import app.plugins.agentmascot as module
     root = Path(module.__file__).parent
     metadata = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
-    assert metadata["version"] == module.AgentMascot.plugin_version == "1.0.0"
+    assert metadata["version"] == module.AgentMascot.plugin_version == "3.0.0"
     runtime = root / "dist/assets/runtime-BCybTabx.js"
     assert hashlib.sha256(runtime.read_bytes()).hexdigest() == "a8b13331388311919324a132c5df318e6a9bc00304089ba082b17d7836f90a5c"
-    assert "v1.0.0" in metadata["history"]
+    assert "v3.0.0" in metadata["history"]
