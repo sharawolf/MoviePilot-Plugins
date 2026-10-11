@@ -12,7 +12,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 function animationHarness() {
   let serial = 0, timestamp = 0
   const frames = new Map(), intervals = new Set()
-  const runtime = createMascotRuntime({ config: { mascot: 'kurisu', auto_roam: false, follow_mouse: false },
+  const runtime = createMascotRuntime({ config: { mascot: 'kurisu', activity_range: 'free', auto_roam: false, follow_mouse: false },
     bounds: () => ({ width: 900, height: 420 }), now: () => timestamp, random: () => .4,
     scheduler: {
       setInterval(callback) { intervals.add(++serial); return serial },
@@ -45,7 +45,7 @@ test('stagnant ground recovery keeps the animation frame loop scheduled', () => 
   h.runtime.start()
   h.runtime.playBehavior('roam', { timestamp: 0 })
   h.runtime.pet.targetX = 2000
-  for (let tick = 0; tick < 420 && h.runtime.debugState().state !== 'rest'; tick++) h.advance()
+  for (let tick = 0; tick < 450 && h.runtime.debugState().state !== 'rest'; tick++) h.advance()
   assert.equal(h.runtime.debugState().state, 'rest')
   assert.equal(h.frames.size, 1)
   h.runtime.stop()
@@ -223,7 +223,7 @@ test('global DOM entry gazes nearby and follows distant vertical moves at the li
   const f = fakeEnv();
   const id = `pet_${'a'.repeat(32)}`;
   const handle = startAgentMascotPatchEntry(f.env, { api: { get: async () => ({ success: true, message: '', data: {
-    config: { enabled: true, mascot: id, scale: 2, speed: 2, follow_mouse: true, auto_roam: true },
+    config: { enabled: true, mascot: id, activity_range: 'free', scale: 2, speed: 2, follow_mouse: true, auto_roam: true },
     pet: { id, version: 2, rows: 11, sprite_url: '/sprite.png' },
   } }) } });
   await flush();
@@ -253,7 +253,7 @@ test('classic loader runs the same vertical-follow runtime and exposes its build
   const id = `pet_${'b'.repeat(32)}`;
   f.env.URL = URL;
   f.env.fetch = async () => ({ ok: true, json: async () => ({ success: true, message: '', data: {
-    config: { enabled: true, mascot: id, scale: 2, speed: 2, follow_mouse: true, auto_roam: false },
+    config: { enabled: true, mascot: id, activity_range: 'free', scale: 2, speed: 2, follow_mouse: true, auto_roam: false },
     pet: { id, version: 2, rows: 11, sprite_url: '/sprite.png' },
   } }) });
   runInNewContext(readFileSync(new URL('../../../plugins.v3/agentmascot/dist/assets/agentmascot-loader.global.js', import.meta.url), 'utf8'), f.env);

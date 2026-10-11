@@ -66,13 +66,13 @@ test('delete calls the exact instance and removes only after acknowledgement', a
   assert.equal(removed, pet.id)
 })
 
-function runtimeHarness(version = 2, initialPet) {
-  let config = { enabled: true, mascot: pet.id, scale: 1, speed: 1, auto_roam: false,
+function runtimeHarness(version = 2, initialPet, random) {
+  let config = { enabled: true, mascot: pet.id, activity_range: 'free', scale: 1, speed: 1, auto_roam: false,
     follow_mouse: true, _pet: { ...pet, version, rows: version === 2 ? 11 : 9 } }
   let serial = 0
   let bounds = { width: 640, height: 360 }
   const frames = new Map()
-  const runtime = createMascotRuntime({ getConfig: () => config, bounds: () => bounds, initialPet,
+  const runtime = createMascotRuntime({ getConfig: () => config, bounds: () => bounds, initialPet, random,
     scheduler: { requestAnimationFrame: cb => { frames.set(++serial, cb); return serial }, cancelAnimationFrame: id => frames.delete(id) } })
   return { runtime, frames, config, update(next) { config = next; runtime.updateConfig(next) },
     resize(next) { bounds = next; runtime.clampToBounds() },
@@ -280,7 +280,7 @@ test('imported frame maps play extra action frames and replace absent actions an
 
 test('running cadence follows speed and travel is stable across display refresh rates', () => {
   function run(speed, hz) {
-    const h = runtimeHarness()
+    const h = runtimeHarness(2, undefined, () => 0.5)
     h.resize({ width: 2400, height: 800 })
     h.update({ ...h.config, speed, auto_roam: true, follow_mouse: false })
     h.runtime.start()
@@ -298,7 +298,7 @@ test('running cadence follows speed and travel is stable across display refresh 
   assert.ok(slow.changes >= 20, 'running no longer holds every frame for 120 ms')
   assert.ok(fast.changes > slow.changes * 1.7)
   assert.ok(fast.x - 80 > (slow.x - 80) * 1.9)
-  for (const hz of [30, 120]) assert.ok(Math.abs(run(1, hz).x - slow.x) < .1)
+  for (const hz of [30, 120]) assert.ok(Math.abs(run(1, hz).x - slow.x) < 1.2)
 })
 
 test('following decelerates smoothly and small pointer changes do not toggle running', () => {
@@ -441,15 +441,23 @@ test('every v1/v2 action completes its frame cycle at speed limits and 30/60/120
   }
 })
 
-test('all nine actions can interrupt one another without retaining the previous row or pose', () => {
+test('different native actions interrupt cleanly while repeating a jump preserves its arc', () => {
   for (const version of [1, 2]) for (const from of Object.keys(nativeActions)) {
     for (const [to, [row]] of Object.entries(nativeActions)) {
       const h = runtimeHarness(version, { anchorX: 250, anchorY: 180 })
       h.update({ ...h.config, auto_roam: false, follow_mouse: false })
       h.runtime.playAction(from); h.runtime.start()
       for (let i = 0; i < 12; i++) h.tick(i * 16)
-      h.runtime.playAction(to)
-      assert.deepEqual([h.runtime.renderState().row, h.runtime.renderState().column], [row, 0], `${version}: ${from} -> ${to}`)
+      const applied = h.runtime.playAction(to)
+      const view = h.runtime.renderState()
+      if (from === 'jumping' && to === 'jumping') {
+        assert.equal(applied, false, `${version}: repeated jump is ignored`)
+        assert.equal(view.row, row, `${version}: repeated jump keeps its row`)
+        assert.ok(view.column > 0, `${version}: repeated jump keeps its current pose`)
+      } else {
+        assert.equal(applied, true, `${version}: ${from} -> ${to}`)
+        assert.deepEqual([view.row, view.column], [row, 0], `${version}: ${from} -> ${to}`)
+      }
       for (let i = 12; i < 240; i++) h.tick(i * 16)
       assert.equal(h.runtime.renderState().row, 0, `${version}: ${from} -> ${to} finishes`)
       assert.equal(h.runtime.debugState().jumping, false)

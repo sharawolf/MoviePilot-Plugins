@@ -10,6 +10,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "show_sidebar_nav": True,
     "scale": 1.0,
     "speed": 1.0,
+    "activity_range": "surfaces",
     "follow_mouse": True,
     "auto_roam": True,
     "shadow": True,
@@ -22,6 +23,7 @@ CONFIG_ATTRIBUTES = {
     "show_sidebar_nav": "_show_sidebar_nav",
     "scale": "_scale",
     "speed": "_speed",
+    "activity_range": "_activity_range",
     "follow_mouse": "_follow_mouse",
     "auto_roam": "_auto_roam",
     "shadow": "_shadow",
@@ -46,11 +48,13 @@ def clamp_number(value: Any, minimum: float, maximum: float, default: float) -> 
 def normalize_config(config: Mapping[str, Any] | None = None) -> dict[str, Any]:
     raw_config = config or {}
     mascot = str(raw_config.get("mascot", DEFAULT_CONFIG["mascot"]))
+    activity_range = raw_config.get("activity_range")
     normalized = {
         "enabled": bool(raw_config.get("enabled", DEFAULT_CONFIG["enabled"])),
         "mascot": mascot if mascot in MASCOT_CHOICES or re.fullmatch(r"pet_[0-9a-f]{32}", mascot) else DEFAULT_CONFIG["mascot"],
         "replace_agent_entry": bool(raw_config.get("replace_agent_entry", DEFAULT_CONFIG["replace_agent_entry"])),
         "show_sidebar_nav": bool(raw_config.get("show_sidebar_nav", DEFAULT_CONFIG["show_sidebar_nav"])),
+        "activity_range": activity_range if isinstance(activity_range, str) and activity_range in {"surfaces", "floor", "free"} else DEFAULT_CONFIG["activity_range"],
         "follow_mouse": bool(raw_config.get("follow_mouse", DEFAULT_CONFIG["follow_mouse"])),
         "auto_roam": bool(raw_config.get("auto_roam", DEFAULT_CONFIG["auto_roam"])),
         "shadow": bool(raw_config.get("shadow", DEFAULT_CONFIG["shadow"])),

@@ -22,6 +22,7 @@ const tabs = [
   { key: 'appearance', label: '形象与行为', icon: 'mdi-palette-outline', description: '选择角色，调整大小和活动方式' },
   { key: 'preview', label: '动作预览', icon: 'mdi-motion-play-outline', description: '在独立预览区体验角色动作' },
 ]
+const ACTIVITY_RANGE_LABELS = { surfaces: '站上页面元素', floor: '只在页面底部', free: '视口内自由' }
 const currentTab = computed(() => tabs.find(tab => tab.key === activeTab.value))
 const controller = createConfigController({
   api: props.api, pluginId: props.pluginId, initialConfig: props.initialConfig,
@@ -33,6 +34,7 @@ const controller = createConfigController({
 const { state, dirty } = controller
 const profile = computed(() => resolveMascotProfile(state.draft.mascot, state.pets))
 const savedProfile = computed(() => resolveMascotProfile(state.saved.mascot, state.pets))
+const savedActivityRange = computed(() => ACTIVITY_RANGE_LABELS[state.saved.activity_range] || ACTIVITY_RANGE_LABELS.surfaces)
 const previewConfig = computed(() => ({ ...state.draft, _pet: state.pets.find(pet => pet.id === state.draft.mascot) }))
 const busy = computed(() => state.loading || state.saving || libraryBusy.value)
 const controlsDisabled = computed(() => !state.ready || busy.value || state.pendingReadback)
@@ -143,7 +145,7 @@ onBeforeUnmount(deactivate)
           </ol>
           <div class="am-overview-grid">
             <section class="am-summary-card"><img :src="savedProfile.icon" alt="" /><div><span class="am-eyebrow">当前形象</span><strong>{{ savedProfile.label }}</strong><p>大小 {{ state.saved.scale.toFixed(2) }}× · 速度 {{ state.saved.speed.toFixed(2) }}×</p></div></section>
-            <section class="am-summary-card"><VIcon icon="mdi-cursor-default-outline" size="30" color="primary" /><div><span class="am-eyebrow">活动方式</span><strong>{{ state.saved.auto_roam ? '自动游走' : '自由互动' }}</strong><p>{{ state.saved.follow_mouse ? '跟随鼠标' : '不跟随鼠标' }} · {{ state.saved.shadow ? '显示阴影' : '隐藏阴影' }}</p></div></section>
+            <section class="am-summary-card"><VIcon icon="mdi-cursor-default-outline" size="30" color="primary" /><div><span class="am-eyebrow">活动方式</span><strong>{{ state.saved.auto_roam ? '自动游走' : '自由互动' }}</strong><p>{{ savedActivityRange }} · {{ state.saved.follow_mouse ? '跟随鼠标' : '不跟随鼠标' }} · {{ state.saved.shadow ? '显示阴影' : '隐藏阴影' }}</p></div></section>
           </div>
           <section class="am-note"><VIcon icon="mdi-information-outline" size="22" color="primary" /><div v-if="agentHost"><h4>在智能助手中选择一次，刷新自动恢复</h4><p>打开智能助手，点击「更换形象」并选择「Agent 桌宠」。角色由本页设置决定；以后刷新页面无需再打开插件。</p></div><div v-else><h4>当前宿主需手动加载桌宠</h4><p>打开桌宠页面后会保留到本次页面会话结束。升级至 MP v3.1.4 后，可在助手中选择形象并自动恢复。</p></div></section>
           <section class="am-note am-note--subtle"><VIcon icon="mdi-lifebuoy" size="22" /><div><h4>桌宠没有出现？</h4><p>先检查基础设置中的启用和入口替换开关，再点击右上角刷新。停用后，当前页面会在下次状态检查时恢复原生入口。</p></div></section>
@@ -165,6 +167,14 @@ onBeforeUnmount(deactivate)
           <div class="am-slider-grid">
             <section class="am-slider-card"><label :id="`${fieldId}-scale`">角色大小 <strong>{{ state.draft.scale.toFixed(2) }}×</strong></label><VSlider :model-value="state.draft.scale" :disabled="controlsDisabled" min="0.6" max="4" step="0.05" hide-details color="primary" :aria-labelledby="`${fieldId}-scale`" @update:model-value="controller.edit('scale', $event)" /><p>0.60× — 4.00×</p></section>
             <section class="am-slider-card"><label :id="`${fieldId}-speed`">移动速度 <strong>{{ state.draft.speed.toFixed(2) }}×</strong></label><VSlider :model-value="state.draft.speed" :disabled="controlsDisabled" min="0.4" max="2" step="0.05" hide-details color="primary" :aria-labelledby="`${fieldId}-speed`" @update:model-value="controller.edit('speed', $event)" /><p>0.40× — 2.00×</p></section>
+          </div>
+          <div class="am-range-setting">
+            <label :id="`${fieldId}-activity-range`">活动范围</label>
+            <VBtnToggle class="am-range-toggle" :model-value="state.draft.activity_range" :disabled="controlsDisabled" mandatory divided color="primary" variant="outlined" density="compact" role="group" :aria-labelledby="`${fieldId}-activity-range`" @update:model-value="controller.edit('activity_range', $event)">
+              <VBtn value="surfaces">站上页面元素</VBtn>
+              <VBtn value="floor">只在页面底部</VBtn>
+              <VBtn value="free">视口内自由</VBtn>
+            </VBtnToggle>
           </div>
           <div class="am-behaviors"><VSwitch v-for="item in [{ key: 'follow_mouse', label: '跟随鼠标' }, { key: 'auto_roam', label: '自动游走' }, { key: 'shadow', label: '地面阴影' }]" :key="item.key" :model-value="state.draft[item.key]" :disabled="controlsDisabled" :label="item.label" hide-details inset density="compact" color="primary" @update:model-value="controller.edit(item.key, $event)" /></div>
           <p class="am-hint">手机上轻点桌宠打开助手，拖动调整位置；滑动页面不会触发跟随。页面桌宠会自动缩小以适应屏幕。</p>

@@ -104,6 +104,12 @@ def test_nonfinite_configuration_remains_json_safe(value):
     json.dumps(config, allow_nan=False)
 
 
+def test_activity_range_defaults_and_rejects_unknown_values():
+    assert normalize_config()["activity_range"] == "surfaces"
+    assert normalize_config({"activity_range": "floor"})["activity_range"] == "floor"
+    assert normalize_config({"activity_range": "unknown"})["activity_range"] == "surfaces"
+
+
 def test_repeat_init_stop_and_disable(plugin):
     plugin.stop_service()
     plugin.stop_service()
@@ -176,12 +182,13 @@ def test_configuration_persistence_failure_emits_error_without_success(plugin, m
     assert any("初始化失败" in text for text in errors)
 
 
-def test_original_asset_survives_and_metadata_agrees():
+def test_runtime_asset_and_metadata_agree():
     import hashlib
     import app.plugins.agentmascot as module
     root = Path(module.__file__).parent
     metadata = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
-    assert metadata["version"] == module.AgentMascot.plugin_version == "3.0.0"
+    assert metadata["version"] == module.AgentMascot.plugin_version == "3.0.1"
     runtime = root / "dist/assets/runtime-BCybTabx.js"
-    assert hashlib.sha256(runtime.read_bytes()).hexdigest() == "a8b13331388311919324a132c5df318e6a9bc00304089ba082b17d7836f90a5c"
+    assert hashlib.sha256(runtime.read_bytes()).hexdigest() == "d312b1f8aaf423deda16447690b09f6537a087f43ef6867a3c5c59b6e5a49eb4"
+    assert "v3.0.1" in metadata["history"]
     assert "v3.0.0" in metadata["history"]

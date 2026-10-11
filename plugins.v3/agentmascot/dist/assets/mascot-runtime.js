@@ -1,5 +1,5 @@
-import { n as builtinNormalize, e as createBuiltinRuntime, g as builtinProfile } from './runtime-BCybTabx.js?v=e491e0024a9bf3cc';
-import { createCodexPetRuntime } from './codex-pet.js?v=e491e0024a9bf3cc';
+import { n as builtinNormalize, e as createBuiltinRuntime, g as builtinProfile } from './runtime-BCybTabx.js?v=28fb3acc32ce7e9b';
+import { createCodexPetRuntime } from './codex-pet.js?v=28fb3acc32ce7e9b';
 
 const isCustomPet = name => /^pet_[0-9a-f]{32}$/.test(name || '')
 const renderedImages = new WeakMap()

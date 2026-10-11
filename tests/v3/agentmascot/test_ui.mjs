@@ -129,3 +129,9 @@ test('preview action menus preserve the supported actions for every restored cha
     assert.equal(new Set(actions).size, actions.length)
   }
 })
+
+test('activity range is part of normalized saved configuration', () => {
+  assert.equal(config().activity_range, 'surfaces')
+  assert.equal(config({ activity_range: 'floor' }).activity_range, 'floor')
+  assert.equal(config({ activity_range: 'unknown' }).activity_range, 'surfaces')
+})

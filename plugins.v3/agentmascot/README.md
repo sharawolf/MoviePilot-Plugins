@@ -1,6 +1,6 @@
 # Agent 桌宠形象
 
-v3.0.0 — 支持 Codex Pet 压缩包导入、角色库与动作预览，适配手机触摸和可视区域，保留原有角色和桌宠控制台。
+v3.0.1 — 新增三档活动范围，修复平台落地与导入角色原生动作轮播。
 
 本地适配候选，支持 MoviePilot v3.1.3 及以上。原作者：ifsherlock；本次 V3 维护：z2561221 / Kurisu。
 
@@ -30,11 +30,11 @@ v3.0.0 — 支持 Codex Pet 压缩包导入、角色库与动作预览，适配�
 
 MP v3.1.4 通过 `get_agent_pets()` 与联邦 `./AgentPet` 加载官方 `stage` 形象，宿主负责选择、整页刷新恢复、退出登录及形象切换后的卸载。插件向宿主上报气泡锚点和拖拽状态，通过 `agent.open()` 打开助手；配置读取或图片加载失败交由宿主回退。打开插件设置页不会覆盖宿主选择，切换回“内置机器人”后不会被设置页重新替换。角色仍在插件内选择，原有导入素材与动作保持可用。
 
-MP v3.1.3 仍保留打开插件页后启动的旧入口，整页刷新后需要再次打开。独立脚本方式仍可使用受认证的 `/api/v1/plugin/AgentMascot/loader`，但不会抢占已挂载的官方 stage。插件不修改宿主前端或管理员默认形象；同一未发布周期继续使用 v3.0.0。
+MP v3.1.3 仍保留打开插件页后启动的旧入口，整页刷新后需要再次打开。独立脚本方式仍可使用受认证的 `/api/v1/plugin/AgentMascot/loader`，但不会抢占已挂载的官方 stage。插件不修改宿主前端或管理员默认形象；同一未发布周期继续使用 v3.0.1。
 
 保留小天照、奶龙、克里斯蒂娜的素材和 idle / walk / run / follow / drag / sleep / wall / ceiling / fall 动作。JSON API 明确返回 `success / message / data`，插件界面复用宿主注入的 API 客户端。
 
-恢复来源：`agentmascot_v0.1.18-behavior-actions-slim.zip`，SHA-256：`019cbc33013486db096d31547738cf948bdeaad7798734977b79cdcdb2c11686`。原包源码版本为 0.1.15、前端包版本为 0.1.16；V3 开发候选统一为 3.0.0。原包只包含编译模块；本次 UI 维护重建了 `src/` 下的 Vue 源码及锁定依赖的 Vite 工程。`runtime/` 保存恢复的动作引擎、素材和入口适配器，构建时复制到 `dist/assets/`；其中 `runtime-BCybTabx.js` 与原包保持逐字节一致。
+恢复来源：`agentmascot_v0.1.18-behavior-actions-slim.zip`，SHA-256：`019cbc33013486db096d31547738cf948bdeaad7798734977b79cdcdb2c11686`。原包源码版本为 0.1.15、前端包版本为 0.1.16；首次 V3 开发候选统一为 3.0.0。原包只包含编译模块；本次 UI 维护重建了 `src/` 下的 Vue 源码及锁定依赖的 Vite 工程。`runtime/` 保存恢复的动作引擎、素材和入口适配器，构建时复制到 `dist/assets/`；其中 `runtime-BCybTabx.js` 与原包保持逐字节一致。
 
 前端构建：在本插件目录执行 `npm ci`、`npm run build`，同时生成联邦组件和独立全局入口脚本。宿主提供 Vue 与 Vuetify 组件，构建产物不重复打包宿主 UI 库。保留 `Config`、`Page`、`AppPage` 和历史 `PluginEntry` 联邦入口。图片解析使用宿主已有 Pillow，不安装额外依赖。
 

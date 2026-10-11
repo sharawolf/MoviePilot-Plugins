@@ -1268,6 +1268,7 @@ const DEFAULT_CONFIG = {
   show_sidebar_nav: true,
   scale: 1,
   speed: 1,
+  activity_range: 'surfaces',
   follow_mouse: true,
   auto_roam: true,
   shadow: true,
@@ -1281,8 +1282,8 @@ const CONFIG_LIMITS = {
 const SHIMEJI_CANVAS_SIZE = 128;
 const SHIMEJI_TICK_MS = 33;
 const ROAM_INTERVAL = 5200;
-const ROAM_REST_MIN = 12000;
-const ROAM_REST_RANGE = 30000;
+const ROAM_REST_MIN = 1200;
+const ROAM_REST_RANGE = 2600;
 const WALL_REST_MIN = 9000;
 const WALL_REST_RANGE = 24000;
 const FOLLOW_DEAD_ZONE = 92;
@@ -1290,7 +1291,7 @@ const RUN_DISTANCE = 260;
 const VIEWPORT_PADDING = 12;
 const GROUND_PADDING = 18;
 const WALL_MARGIN = 72;
-const SURFACE_SCAN_MS = 1200;
+const SURFACE_SCAN_MS = 300;
 const LANE_MIN_GAP = 54;
 const Y_FOLLOW_DWELL_MS = 1100;
 const Y_FOLLOW_COOLDOWN_MS = 4200;
@@ -1347,6 +1348,7 @@ function normalizeConfig(config) {
     mascot: ['chibiterasu', 'nailong', 'kurisu'].includes(rawConfig.mascot) ? rawConfig.mascot : DEFAULT_CONFIG.mascot,
     replace_agent_entry: Boolean(rawConfig.replace_agent_entry ?? DEFAULT_CONFIG.replace_agent_entry),
     show_sidebar_nav: Boolean(rawConfig.show_sidebar_nav ?? DEFAULT_CONFIG.show_sidebar_nav),
+    activity_range: ['surfaces', 'floor', 'free'].includes(rawConfig.activity_range) ? rawConfig.activity_range : DEFAULT_CONFIG.activity_range,
     follow_mouse: Boolean(rawConfig.follow_mouse ?? DEFAULT_CONFIG.follow_mouse),
     auto_roam: Boolean(rawConfig.auto_roam ?? DEFAULT_CONFIG.auto_roam),
     shadow: Boolean(rawConfig.shadow ?? DEFAULT_CONFIG.shadow),
@@ -1367,6 +1369,7 @@ const ACTION_CATALOG = {
 
 const GROUND_MOVE_ACTIONS = ['walk', 'run', 'dash'];
 const REST_ACTIONS = ACTION_CATALOG.rest;
+const AUTO_GROUND_ACTIONS = ['crawl', 'pullOut', 'cheer', 'spinCelebrate'];
 const WALL_REST_ACTIONS = ['holdWall'];
 const CEILING_REST_ACTIONS = ['holdCeiling'];
 const INTERRUPT_ACTIONS = [
@@ -1608,6 +1611,48 @@ function buildDomSurfaceLanes(context, elements, options = {}) {
   })
 }
 
+/** 收集当前视口内可见且可承托桌宠的页面矩形。 */
+function buildDomSurfaces(context, elements, options = {}) {
+  const width = viewportDimension(context.bounds, 'width');
+  const height = viewportDimension(context.bounds, 'height');
+  const offsetX = Number(options.offsetX) || 0;
+  const offsetY = Number(options.offsetY) || 0;
+  const minWidth = options.minWidth ?? 120;
+  const petHeight = Number(options.petHeight ?? context.petHeight ?? context.size ?? 0);
+  const surfaces = [];
+  for (const element of Array.from(elements || [])) {
+    try {
+      if (!element || options.shouldIgnoreElement?.(element)) continue
+      const style = options.getStyle?.(element);
+      if (style?.display === 'none' || style?.visibility === 'hidden' || style?.contentVisibility === 'hidden'
+          || Number(style?.opacity) === 0 || style?.pointerEvents === 'none') continue
+      if (element.getAttribute?.('aria-hidden') === 'true' || element.hasAttribute?.('inert')) continue
+      const rect = element.getBoundingClientRect?.();
+      if (!rect || rect.width < minWidth || rect.height <= 0) continue
+      const left = Math.max(0, rect.left - offsetX);
+      const right = Math.min(width, rect.right - offsetX);
+      const top = rect.top - offsetY;
+      if (right - left < minWidth || top < petHeight + 4 || top >= height - 4) continue
+      if (rect.bottom <= offsetY || rect.top >= offsetY + height) continue
+
+      if (options.isTopVisible) {
+        const samples = [left + 8, (left + right) / 2, right - 8];
+        const visible = samples.some(x => options.isTopVisible(element, x + offsetX, top + offsetY + 1) === true);
+        if (!visible) continue
+      }
+
+      const surface = { id: `element:${Math.round(left)}:${Math.round(right)}:${Math.round(top)}`,
+        left, right, top, floor: false };
+      if (!surfaces.some(item => Math.abs(item.top - top) < 3
+          && Math.abs(item.left - left) < 3 && Math.abs(item.right - right) < 3)) surfaces.push(surface);
+    } catch (error) {
+      options.onError?.(error);
+    }
+  }
+  surfaces.push({ id: 'floor', left: 0, right: width, top: height, floor: true });
+  return surfaces.sort((a, b) => a.top - b.top || a.left - b.left || b.right - a.right)
+}
+
 function nearestSurfaceLane(anchorY, lanes, fallbackLane) {
   return lanes.reduce(
     (best, lane) => (Math.abs(lane - anchorY) < Math.abs(best - anchorY) ? lane : best),
@@ -1741,6 +1786,7 @@ function createMascotRuntime(options = {}) {
   const random = options.random || Math.random;
   const boundsProvider = options.bounds || (() => ({ width: 720, height: 360 }));
   const getSurfaceLanes = options.getSurfaceLanes || (context => buildSurfaceLanes(context));
+  const getSurfaces = options.getSurfaces || (() => []);
   const onUpdate = options.onUpdate || (() => {});
   const pet = options.pet || createPetState(options.initialPet);
   const mouse = options.mouse || createMouseState(options.initialMouse);
@@ -1756,6 +1802,9 @@ function createMascotRuntime(options = {}) {
   let roamPausedUntil = 0;
   let dragStart = null;
   let suppressClickUntil = 0;
+  let currentPlatform = null;
+  let roamSpeedMultiplier = 1;
+  let autoRestCount = 0;
 
   function config() {
     return normalizeConfig(options.getConfig ? options.getConfig() : localConfig)
@@ -1806,7 +1855,7 @@ function createMascotRuntime(options = {}) {
   }
 
   function laneGap$1() {
-    return laneGap(petSize$1())
+    return laneGap(petSize$1(), poseScale$1())
   }
 
   function normalizeLaneY$1(anchorY) {
@@ -1851,6 +1900,124 @@ function createMascotRuntime(options = {}) {
   function crossedLandingY(previousY, currentY) {
     const tolerance = Math.max(8 * poseScale$1(), 4);
     return crossedSurfaceLane(previousY, currentY, surfaceLanes(), tolerance)
+  }
+
+  /** 返回当前桌宠的活动范围。 */
+  function activityRange() {
+    return config().activity_range
+  }
+
+  /** 取得当前模式允许站立的平台集合。 */
+  function platformList(force = false) {
+    const mode = activityRange();
+    if (mode === 'free') return []
+    const viewport = bounds();
+    const floor = { id: 'floor', left: 0, right: viewport.width, top: groundAnchorY$1(), floor: true };
+    if (mode === 'floor') return [floor]
+    const found = getSurfaces(surfaceContext(), force);
+    const platforms = Array.isArray(found) ? found.filter(surface => surface && !surface.floor
+      && Number.isFinite(surface.left) && Number.isFinite(surface.right) && Number.isFinite(surface.top)
+      && surface.right - surface.left >= petSize$1()) : [];
+    return [...platforms, floor]
+  }
+
+  /** 将平台上沿映射为内置角色的脚底锚点。 */
+  function platformAnchorY(surface) {
+    return surface.floor ? groundAnchorY$1() : normalizeLaneY$1(surface.top)
+  }
+
+  /** 计算精灵完整落在平台内时的水平锚点范围。 */
+  function platformAnchorRange(surface, pose = currentPose()) {
+    const viewport = bounds();
+    const size = petSize$1();
+    const anchor = visualAnchor(pose, size, poseScale$1(), pet.lookRight);
+    return [
+      Math.max(viewportPadding + anchor.x, surface.left + anchor.x),
+      Math.min(viewport.width - viewportPadding - (size - anchor.x), surface.right - size + anchor.x),
+    ]
+  }
+
+  /** 判断平台能否完整承托给定水平位置的精灵。 */
+  function platformSupports(surface, anchorX = pet.anchorX) {
+    const [minimum, maximum] = platformAnchorRange(surface);
+    return minimum <= maximum && anchorX >= minimum - 2 && anchorX <= maximum + 2
+  }
+
+  /** 按当前位置与高度选择最接近的平台。 */
+  function findPlatformAt(anchorX = pet.anchorX, anchorY = pet.anchorY, force = false) {
+    const tolerance = Math.max(10 * poseScale$1(), laneGap$1() * 0.24);
+    return platformList(force).filter(surface => platformSupports(surface, anchorX)
+      && Math.abs(platformAnchorY(surface) - anchorY) <= tolerance)
+      .sort((a, b) => {
+        const distance = Math.abs(platformAnchorY(a) - anchorY) - Math.abs(platformAnchorY(b) - anchorY);
+        if (distance) return distance
+        if (a.id === currentPlatform?.id) return -1
+        if (b.id === currentPlatform?.id) return 1
+        return (b.right - b.left) - (a.right - a.left)
+      })[0] || null
+  }
+
+  /** 选择下落轨迹中第一个能够完整承托精灵的平台。 */
+  function findLandingPlatform(previousY, currentY) {
+    if (currentY < previousY) return null
+    const tolerance = Math.max(8 * poseScale$1(), 4);
+    return platformList().filter(surface => {
+      const landingY = platformAnchorY(surface);
+      return landingY > previousY + 0.1 && landingY <= currentY + tolerance
+        && platformSupports(surface, pet.anchorX)
+    }).sort((a, b) => platformAnchorY(a) - platformAnchorY(b))[0] || null
+  }
+
+  /** 将内置角色的脚底锚定到指定平台。 */
+  function setPlatform(surface) {
+    currentPlatform = surface;
+    pet.surface = 'ground';
+    setLaneY(platformAnchorY(surface));
+  }
+
+  /** 在当前可行走范围内选择短、中、长三档目标。 */
+  function chooseRoamTargetX(minimum, maximum, allowDrop = false) {
+    if (maximum - minimum < 8) return minimum
+    const size = petSize$1();
+    let direction = random() < 0.72 ? (pet.lookRight ? 1 : -1) : (pet.lookRight ? -1 : 1);
+    if (pet.anchorX - minimum < size * 0.65) direction = 1;
+    else if (maximum - pet.anchorX < size * 0.65) direction = -1;
+    const band = random();
+    const distance = (maximum - minimum) * (band < 0.34 ? 0.18 : band < 0.78 ? 0.42 : 0.76);
+    let target = Math.min(maximum, Math.max(minimum, pet.anchorX + direction * Math.max(12, distance)));
+    if (allowDrop && activityRange() === 'surfaces' && random() < 0.14) {
+      target = direction > 0 ? maximum + 16 : minimum - 16;
+    }
+    if (Math.abs(target - pet.anchorX) < 8) target = direction > 0 ? maximum : minimum;
+    return target
+  }
+
+  /** 规划一次落在更高页面元素上的跳跃。 */
+  function startPlatformHop(timestamp, targetSurface = null, targetX = null) {
+    if (activityRange() !== 'surfaces' || pet.surface === 'air') return false
+    const current = currentPlatform || findPlatformAt();
+    if (!current) return false
+    const currentY = platformAnchorY(current);
+    const size = petSize$1();
+    const candidates = platformList().filter(surface => !surface.floor
+      && platformAnchorY(surface) < currentY - 12
+      && currentY - platformAnchorY(surface) <= size * 0.85);
+    const destination = targetSurface
+      ? candidates.find(surface => surface.id === targetSurface.id)
+      : candidates[Math.floor(random() * candidates.length)];
+    if (!destination) return false
+    const [minimum, maximum] = platformAnchorRange(destination);
+    const landingX = Math.min(maximum, Math.max(minimum, targetX ?? pet.anchorX));
+    if (minimum > maximum || Math.abs(landingX - pet.anchorX) > size * 1.25) return false
+    const height = currentY - platformAnchorY(destination);
+    const flightTicks = Math.max(10, Math.sqrt(2 * height / AIR_GRAVITY) * 2);
+    const horizontalSpeed = Math.min(3.2, Math.max(-3.2, (landingX - pet.anchorX) / flightTicks));
+    currentPlatform = null;
+    startFall(timestamp, horizontalSpeed, -(Math.sqrt(2 * AIR_GRAVITY * height) + 2));
+    pet.state = 'leap';
+    pet.targetX = landingX;
+    pet.targetY = platformAnchorY(destination);
+    return true
   }
 
   function wallAnchorX$1(side) {
@@ -1994,7 +2161,7 @@ function createMascotRuntime(options = {}) {
       setAction(isFollowingMouse && distance > RUN_DISTANCE ? 'dash' : 'run', timestamp);
       return
     }
-    if (distance > 8) {
+    if (distance > 3) {
       setAction('walk', timestamp);
       return
     }
@@ -2002,8 +2169,13 @@ function createMascotRuntime(options = {}) {
     setAction('stand', timestamp);
   }
 
-  function startRest(timestamp, choices = REST_ACTIONS, min = ROAM_REST_MIN, range = ROAM_REST_RANGE) {
-    const nextAction = choices[Math.floor(random() * choices.length)] || 'stand';
+  function startRest(timestamp, choices = null, min = ROAM_REST_MIN, range = ROAM_REST_RANGE) {
+    autoRestCount++;
+    const nextAction = choices
+      ? choices[Math.floor(random() * choices.length)] || 'stand'
+      : autoRestCount % 5 === 0
+        ? AUTO_GROUND_ACTIONS[Math.floor(autoRestCount / 5 - 1) % AUTO_GROUND_ACTIONS.length]
+        : REST_ACTIONS[Math.floor(random() * REST_ACTIONS.length)];
     const duration = min + random() * range;
     pet.targetX = pet.anchorX;
     pet.targetY = pet.anchorY;
@@ -2022,19 +2194,53 @@ function createMascotRuntime(options = {}) {
     setAction(nextAction, timestamp, { force: true, duration });
   }
 
-  function startGroundMove(timestamp, targetX = null, state = 'groundMove') {
+  function startGroundMove(timestamp, targetX = null, state = 'groundMove', allowDrop = false) {
     pet.surface = 'ground';
     pet.state = state;
     pet.stateUntil = 0;
     roamPausedUntil = 0;
     clearMoveStagnation();
-    const shouldShiftLane = state === 'groundMove' && random() < 0.38;
-    setLaneY(chooseLaneY(!shouldShiftLane));
-    pet.targetX = targetX ?? randomGroundX$1();
+    const mode = activityRange();
+    if (mode !== 'free') {
+      const platform = currentPlatform || findPlatformAt();
+      if (!platform) {
+        currentPlatform = null;
+        startFall(timestamp);
+        return
+      }
+      setPlatform(platform);
+      const [minimum, maximum] = platformAnchorRange(platform);
+      pet.targetX = targetX ?? chooseRoamTargetX(minimum, maximum, allowDrop);
+    } else {
+      currentPlatform = null;
+      const shouldShiftLane = state === 'groundMove' && random() < 0.38;
+      setLaneY(chooseLaneY(!shouldShiftLane));
+      const poseAnchor = visualAnchor(currentPose(), petSize$1(), poseScale$1(), pet.lookRight);
+      pet.targetX = targetX ?? chooseRoamTargetX(
+        viewportPadding + poseAnchor.x,
+        bounds().width - viewportPadding - (petSize$1() - poseAnchor.x),
+      );
+    }
+    roamSpeedMultiplier = 0.78 + random() * 0.5;
     updateGroundAction(Math.abs(pet.targetX - pet.anchorX), timestamp, false);
   }
 
   function startMoveToWall(timestamp, side = random() < 0.5 ? 'left' : 'right') {
+    if (activityRange() === 'floor') {
+      startGroundMove(timestamp);
+      return
+    }
+    if (activityRange() === 'surfaces') {
+      const platform = currentPlatform || findPlatformAt();
+      if (!platform) {
+        startFall(timestamp);
+        return
+      }
+      const [minimum, maximum] = platformAnchorRange(platform);
+      const target = side === 'left' ? minimum - 16 : maximum + 16;
+      startGroundMove(timestamp, target, 'toWall', true);
+      return
+    }
     pet.surface = 'ground';
     pet.state = 'toWall';
     roamPausedUntil = 0;
@@ -2093,6 +2299,13 @@ function createMascotRuntime(options = {}) {
   }
 
   function startLeap(timestamp, side = random() < 0.5 ? 'left' : 'right') {
+    if (activityRange() === 'surfaces') {
+      return startPlatformHop(timestamp)
+    }
+    if (activityRange() === 'floor') {
+      startGroundMove(timestamp);
+      return true
+    }
     const direction = side === 'left' ? -1 : 1;
     pet.surface = 'air';
     pet.state = 'leap';
@@ -2102,6 +2315,7 @@ function createMascotRuntime(options = {}) {
     pet.vy = -(14 + random() * 9) * Number(config().speed || 1);
     clearAirFallState();
     setAction('jump', timestamp, { force: true });
+    return true
   }
 
   function chooseGroundBehavior(timestamp) {
@@ -2118,6 +2332,10 @@ function createMascotRuntime(options = {}) {
   }
 
   function runBehavior(behaviorId, timestamp = now()) {
+    if (activityRange() !== 'free'
+        && ['holdWall', 'climbWall', 'goCeiling', 'holdCeiling', 'crawlCeiling', 'fallFromWall', 'dropFromCeiling'].includes(behaviorId)) {
+      return false
+    }
     if (behaviorId === 'rest') {
       setBehavior({ id: 'rest', cooldownMs: 0 }, timestamp);
       startRest(timestamp);
@@ -2135,8 +2353,7 @@ function createMascotRuntime(options = {}) {
     }
     if (behaviorId === 'leap') {
       setBehavior({ id: 'leap', cooldownMs: 0 }, timestamp);
-      startLeap(timestamp);
-      return true
+      return Boolean(startLeap(timestamp))
     }
     if (behaviorId === 'holdWall') {
       setBehavior({ id: 'holdWall', cooldownMs: 0 }, timestamp);
@@ -2207,7 +2424,8 @@ function createMascotRuntime(options = {}) {
     }
     pet.lookRight = distance > 0;
     const directionMultiplier = pet.lookRight ? -1 : 1;
-    const vx = currentPose().velocity[0] * directionMultiplier * poseScale$1() * Number(config().speed || 1);
+    const vx = currentPose().velocity[0] * directionMultiplier * poseScale$1()
+      * Number(config().speed || 1) * (mouse.active ? 1 : roamSpeedMultiplier);
     if (vx === 0) return
     const step = vx * elapsedTicks;
     if (Math.sign(step) !== Math.sign(distance) || Math.abs(step) >= Math.abs(distance)) {
@@ -2261,6 +2479,21 @@ function createMascotRuntime(options = {}) {
     pet.lookRight = pet.vx > 0;
     setAction(pet.vy < -0.4 ? 'jump' : 'fall', timestamp);
 
+    if (activityRange() !== 'free') {
+      pet.anchorX = clampAnchorX$1(pet.anchorX);
+      const landed = findLandingPlatform(previousY, pet.anchorY);
+      if (landed) {
+        setPlatform(landed);
+        pet.state = 'bounce';
+        pet.vx = 0;
+        pet.vy = 0;
+        clearAirFallState();
+        setAction('bounce', timestamp, { force: true, duration: 520 });
+        pet.stateUntil = timestamp + 520;
+      }
+      return
+    }
+
     const leftX = wallAnchorX$1('left');
     const rightX = wallAnchorX$1('right');
     const highEnoughForWall = pet.anchorY < groundAnchorY$1() - 60 * poseScale$1();
@@ -2304,6 +2537,23 @@ function createMascotRuntime(options = {}) {
   }
 
   function applyMouseYFollow(timestamp) {
+    if (activityRange() === 'floor') {
+      setPlatform(platformList()[0]);
+      return true
+    }
+    if (activityRange() === 'surfaces') {
+      const current = currentPlatform || findPlatformAt();
+      if (!current) return false
+      const target = platformList().filter(surface => {
+        const [minimum, maximum] = platformAnchorRange(surface);
+        return minimum <= maximum && mouse.x >= minimum && mouse.x <= maximum
+      }).sort((a, b) => Math.abs(platformAnchorY(a) - mouse.y) - Math.abs(platformAnchorY(b) - mouse.y))[0];
+      if (!target || target.id === current.id) return false
+      if (platformAnchorY(target) < platformAnchorY(current) - laneGap$1() * 0.35) {
+        return startPlatformHop(timestamp, target, mouse.x)
+      }
+      return false
+    }
     const result = resolveMouseYFollow(mouse, pet, {
       active: mouse.active,
       activeUntil: mouseActiveUntil || mouse.activeUntil,
@@ -2331,6 +2581,17 @@ function createMascotRuntime(options = {}) {
     lastTick = timestamp;
 
     if (!pet.dragging) {
+      if (activityRange() !== 'free' && (pet.surface === 'wall' || pet.surface === 'ceiling')) {
+        startFall(timestamp);
+      }
+      if (activityRange() !== 'free' && pet.surface !== 'air') {
+        const standing = findPlatformAt(pet.anchorX, pet.anchorY);
+        if (standing) setPlatform(standing);
+        else {
+          currentPlatform = null;
+          startFall(timestamp);
+        }
+      }
       const isMouseFresh = config().follow_mouse && timestamp < (mouseActiveUntil || mouse.activeUntil);
       if (isMouseFresh && pet.surface !== 'air') {
         pet.surface = 'ground';
@@ -2372,7 +2633,7 @@ function createMascotRuntime(options = {}) {
         advancePose(elapsedTicks);
       } else {
         pet.surface = 'ground';
-        setLaneY(pet.laneY || nearestLaneToY(pet.anchorY));
+        if (activityRange() === 'free') setLaneY(pet.laneY || nearestLaneToY(pet.anchorY));
         const targetX = isMouseFresh ? mouse.x : pet.targetX;
         const distance = Math.abs(targetX - pet.anchorX);
         if (pet.state === 'rest' && timestamp < pet.stateUntil) advancePose(elapsedTicks);
@@ -2385,27 +2646,30 @@ function createMascotRuntime(options = {}) {
             if (pet.state === 'bounce') startGroundMove(timestamp);
             moveByCurrentPose(elapsedTicks, targetX);
             const nextDistance = Math.abs(targetX - pet.anchorX);
-            if (GROUND_MOVE_ACTIONS.includes(actionState.name) && noteMoveProgress(nextDistance)) {
+            const standing = activityRange() === 'free' ? null : findPlatformAt(pet.anchorX, pet.anchorY);
+            if (activityRange() !== 'free' && !standing) {
+              currentPlatform = null;
+              startFall(timestamp);
+            } else if (standing) {
+              setPlatform(standing);
+            }
+            if (pet.surface === 'ground' && GROUND_MOVE_ACTIONS.includes(actionState.name) && noteMoveProgress(nextDistance)) {
               recoverGroundMove(timestamp);
               finishFrame();
               return
             }
-            if (pet.state === 'toWall' && isAtWallApproach(pet.wallSide)) {
+            if (pet.surface === 'ground' && activityRange() === 'free'
+                && pet.state === 'toWall' && isAtWallApproach(pet.wallSide)) {
               startWall(pet.wallSide, timestamp);
               finishFrame();
               return
             }
-            updateGroundAction(distance, timestamp, isMouseFresh);
+            if (pet.surface === 'ground') updateGroundAction(nextDistance, timestamp, isMouseFresh);
             advancePose(elapsedTicks);
-            if (Math.abs(targetX - pet.anchorX) < 3 && !isMouseFresh) {
+            if (pet.surface === 'ground' && Math.abs(targetX - pet.anchorX) < 3 && !isMouseFresh) {
               pet.anchorX = targetX;
-              if (pet.state === 'toWall') startWall(pet.wallSide, timestamp);
-              else {
-                pet.state = 'rest';
-                pet.stateUntil = timestamp + ROAM_REST_MIN + random() * ROAM_REST_RANGE;
-                roamPausedUntil = pet.stateUntil;
-                setAction(random() < 0.5 ? 'stand' : 'sit', timestamp, { force: true });
-              }
+              if (pet.state === 'toWall' && activityRange() === 'free') startWall(pet.wallSide, timestamp);
+              else startRest(timestamp);
             }
           }
         }
@@ -2421,9 +2685,15 @@ function createMascotRuntime(options = {}) {
 
   function start() {
     stop();
-    setLaneY(chooseLaneY(false));
+    currentPlatform = null;
+    if (activityRange() === 'free') setLaneY(chooseLaneY(false));
+    else {
+      const standing = findPlatformAt(pet.anchorX, pet.anchorY, true);
+      if (standing) setPlatform(standing);
+      else startFall(now());
+    }
     pet.lastAnchorY = pet.anchorY;
-    pet.targetX = randomGroundX$1();
+    pet.targetX = activityRange() === 'free' ? randomGroundX$1() : pet.anchorX;
     roamTimer = scheduler.setInterval?.(() => {
       const canScheduleGroundBehavior = pet.surface === 'ground' && !BLOCKED_GROUND_ROAM_STATES.includes(pet.state);
       if (config().auto_roam && !pet.dragging && !isRoamPaused(now()) && canScheduleGroundBehavior) {
@@ -2443,7 +2713,17 @@ function createMascotRuntime(options = {}) {
   }
 
   function updateConfig(nextConfig) {
+    const previousRange = localConfig.activity_range;
     localConfig = normalizeConfig(nextConfig || DEFAULT_CONFIG);
+    if (previousRange !== localConfig.activity_range) {
+      currentPlatform = null;
+      roamSpeedMultiplier = 1;
+      if (localConfig.activity_range !== 'free' && (pet.surface === 'wall' || pet.surface === 'ceiling')) {
+        startFall(now());
+      } else if (localConfig.activity_range === 'floor' && pet.surface !== 'air') {
+        setPlatform(platformList()[0]);
+      }
+    }
     onUpdate();
   }
 
@@ -2548,10 +2828,12 @@ function createMascotRuntime(options = {}) {
 
   function setSurface(surface, timestamp = now()) {
     if (surface === 'wall') {
+      if (activityRange() !== 'free') return false
       startWall(pet.wallSide || 'left', timestamp);
       return true
     }
     if (surface === 'ceiling') {
+      if (activityRange() !== 'free') return false
       startCeiling(timestamp);
       return true
     }
@@ -2574,7 +2856,19 @@ function createMascotRuntime(options = {}) {
     pausePreviewInterruptions(timestamp, duration + 500);
 
     if (options.surface) setSurface(options.surface, timestamp);
-    else if (['jump', 'fall'].includes(actionName)) startFall(timestamp, 0, actionName === 'jump' ? -8 : 0);
+    else if (['jump', 'fall'].includes(actionName)) {
+      if (actionName === 'jump' && activityRange() === 'floor') {
+        setPlatform(platformList()[0]);
+        pet.state = 'rest';
+        pet.targetX = pet.anchorX;
+        pet.targetY = pet.anchorY;
+        pet.vx = 0;
+        pet.vy = 0;
+        pet.stateUntil = timestamp + duration;
+      }
+      else if (actionName === 'jump' && activityRange() === 'surfaces' && !startPlatformHop(timestamp)) startFall(timestamp, 0, -8);
+      else startFall(timestamp, 0, actionName === 'jump' ? -8 : 0);
+    }
     else {
       pet.dragging = false;
       pet.surface = 'ground';
@@ -2609,6 +2903,8 @@ function createMascotRuntime(options = {}) {
       state: pet.state,
       stateUntil: pet.stateUntil,
       surface: pet.surface,
+      platform: currentPlatform?.id || null,
+      activityRange: activityRange(),
       targetX: pet.targetX,
       targetY: pet.targetY,
       vx: pet.vx,
@@ -2664,4 +2960,4 @@ function createMascotRuntime(options = {}) {
   }
 }
 
-export { CEILING_BEHAVIORS as C, DEFAULT_CONFIG as D, FEATURE_SEMANTIC_ACTIONS as F, GROUND_BEHAVIORS as G, MASCOT_OPTIONS as M, REQUIRED_SEMANTIC_ACTIONS as R, SURFACE_SCAN_MS as S, VIEWPORT_PADDING as V, WALL_BEHAVIORS as W, createActionState as a, createMouseState as b, cloneConfig as c, createPetState as d, createMascotRuntime as e, buildSurfaceLanes as f, resolveMascotProfile as g, buildDomSurfaceLanes as h, normalizeConfig as n, resolveMascotBehaviors as r };
+export { CEILING_BEHAVIORS as C, DEFAULT_CONFIG as D, FEATURE_SEMANTIC_ACTIONS as F, GROUND_BEHAVIORS as G, MASCOT_OPTIONS as M, REQUIRED_SEMANTIC_ACTIONS as R, SURFACE_SCAN_MS as S, VIEWPORT_PADDING as V, WALL_BEHAVIORS as W, createActionState as a, createMouseState as b, cloneConfig as c, createPetState as d, createMascotRuntime as e, buildSurfaceLanes as f, resolveMascotProfile as g, buildDomSurfaceLanes as h, buildDomSurfaces as j, normalizeConfig as n, resolveMascotBehaviors as r };
