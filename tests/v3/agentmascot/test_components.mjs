@@ -50,7 +50,7 @@ function descendants(root) { return [root, ...root.children.flatMap(descendants)
 const text = root => descendants(root).map(n => n.type === 'comment' ? '' : n.text).join('')
 const flush = async () => { await new Promise(resolve => setImmediate(resolve)); await nextTick() }
 
-test('real Config component connects navigation, discard protection, host save and preview cleanup', async () => {
+for (const modernHost of [false, true]) test(`real Config component connects navigation, saves and cleanup (official host: ${modernHost})`, async () => {
   const previous = { window: globalThis.window, document: globalThis.document, ResizeObserver: globalThis.ResizeObserver }
   let serial = 0
   const timers = new Set()
@@ -59,7 +59,7 @@ test('real Config component connects navigation, discard protection, host save a
   let observers = 0
   const handle = { pluginId: 'AgentMascot_clone', revision: RUNTIME_REVISION, sync: async () => {}, getState: () => ({ mounted: true, nativeEntryAvailable: true }) }
   globalThis.window = {
-    __AgentMascotGlobalLoader: handle,
+    __AgentMascotGlobalLoader: modernHost ? undefined : handle,
     setInterval: () => { const id = ++serial; timers.add(id); return id }, clearInterval: id => timers.delete(id),
     setTimeout: () => { const id = ++serial; timers.add(id); return id }, clearTimeout: id => timers.delete(id),
     requestAnimationFrame: () => { const id = ++serial; frames.add(id); return id }, cancelAnimationFrame: id => frames.delete(id),
@@ -85,6 +85,7 @@ test('real Config component connects navigation, discard protection, host save a
     },
     onLayout: value => events.push(value), onClose: () => events.push('close'),
   })
+  if (modernHost) app.provide('moviepilot:agent', { getState: () => ({ available: true }) })
   for (const name of ['VBtn', 'VChip', 'VIcon', 'VList', 'VListItem', 'VCard', 'VCardItem', 'VSwitch', 'VSlider', 'VProgressCircular']) {
     app.component(name, defineComponent({
       props: ['title', 'subtitle'],
@@ -96,6 +97,10 @@ test('real Config component connects navigation, discard protection, host save a
     app.mount(root)
     await flush()
     assert.ok(text(root).includes('以下状态基于已保存设置'))
+    if (modernHost) {
+      assert.ok(text(root).includes('选择一次，刷新自动恢复'))
+      assert.equal(window.__AgentMascotGlobalLoader, undefined, 'settings must not override the host selection')
+    }
     assert.deepEqual(events[0], { maxWidth: '70rem' })
     const find = predicate => { const found = descendants(root).find(predicate); assert.ok(found); return found }
     const nav = async title => { find(n => n.props.title === title).props.onClick(); await nextTick() }

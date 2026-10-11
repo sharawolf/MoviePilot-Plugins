@@ -1,5 +1,5 @@
 // Shared by the global entry, federated entry and Vue preview.
-export function createPointerInput({ getRuntime, point, paused = () => false, render = () => {} }) {
+export function createPointerInput({ getRuntime, point, paused = () => false, render = () => {}, onInteracting = () => {} }) {
   let active = null, start = null, last = null, moved = false, suppressUntil = 0
   const hover = event => {
     if (event.pointerType && event.pointerType !== 'mouse') getRuntime()?.handlePointerLeave()
@@ -13,6 +13,7 @@ export function createPointerInput({ getRuntime, point, paused = () => false, re
     moved = false
     start = last = point(event)
     getRuntime()?.startDrag(start)
+    onInteracting(true)
     event.currentTarget?.setPointerCapture?.(active)
   }
   function move(event) {
@@ -29,12 +30,13 @@ export function createPointerInput({ getRuntime, point, paused = () => false, re
     getRuntime()?.endDrag(cancelled ? last : point(event), 0, 0)
     const id = active
     active = null
+    onInteracting(false)
     if (event.currentTarget?.hasPointerCapture?.(id)) event.currentTarget.releasePointerCapture(id)
   }
   return { hover, down, move, end,
     leave() { getRuntime()?.handlePointerLeave() },
     suppressClick: () => Date.now() < suppressUntil || getRuntime()?.shouldSuppressClick(),
-    reset() { if (active !== null) getRuntime()?.endDrag(last, 0, 0); active = null; start = last = null },
+    reset() { if (active !== null) { getRuntime()?.endDrag(last, 0, 0); onInteracting(false) } active = null; start = last = null },
   }
 }
 

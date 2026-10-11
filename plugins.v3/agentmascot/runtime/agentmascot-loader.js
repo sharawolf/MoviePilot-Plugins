@@ -122,7 +122,7 @@ function createGlobalDomAdapter(options = {}) {
   let lastSurfaceScan = 0;
   let safeArea = null;
   let viewport = viewportGeometry(env);
-  const input = createPointerInput({ getRuntime, point: event => ({
+  const input = createPointerInput({ getRuntime, onInteracting: options.onInteracting, point: event => ({
     x: event.clientX - viewport.left, y: event.clientY - viewport.top,
   }) });
 
@@ -163,6 +163,8 @@ function createGlobalDomAdapter(options = {}) {
     root.style.transform = `translate3d(${state.left + viewport.left}px, ${state.top + viewport.top}px, 0) scaleX(${state.flipX ?? (pet.lookRight ? -1 : 1)})`;
     applyMascotImage(img, state);
     shadow.style.display = runtime().config().shadow ? 'block' : 'none';
+    options.onAnchor?.({ x: state.left + viewport.left, y: state.top + viewport.top,
+      width: state.size, height: state.height || state.size });
   }
 
   function onClick(event) {
@@ -184,7 +186,8 @@ function createGlobalDomAdapter(options = {}) {
         position: fixed;
         top: 0;
         left: 0;
-        z-index: 2147483000;
+        z-index: ${options.container ? 1 : 2147483000};
+        pointer-events: auto;
         display: grid;
         place-items: center;
         padding: 0;
@@ -227,7 +230,7 @@ function createGlobalDomAdapter(options = {}) {
     safeArea.id = 'agentmascot-safe-area';
     safeArea.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
     safeArea.setAttribute('aria-hidden', 'true');
-    env.document.body.appendChild(safeArea);
+    (options.container || env.document.body).appendChild(safeArea);
     viewport = viewportGeometry(env, env.getComputedStyle(safeArea));
     root = env.document.createElement('button');
     root.id = ROOT_ID;
@@ -247,7 +250,7 @@ function createGlobalDomAdapter(options = {}) {
     crop.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none';
     crop.append(img);
     root.append(crop, shadow);
-    env.document.body.appendChild(root);
+    (options.container || env.document.body).appendChild(root);
     env.document.addEventListener('pointermove', input.hover, { passive: true, capture: true });
     env.document.addEventListener('pointerleave', input.leave);
     root.addEventListener('pointerdown', input.down);
@@ -262,6 +265,7 @@ function createGlobalDomAdapter(options = {}) {
     env.document.removeEventListener('pointermove', input.hover, true);
     env.document.removeEventListener('pointerleave', input.leave);
     input.reset();
+    options.onAnchor?.(null);
     safeArea?.remove();
     safeArea = null;
     root?.remove();
@@ -319,8 +323,13 @@ const CONFIG_POLL_MS = 15000;
 
 function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   const pluginId = options.pluginId || PLUGIN_ID;
+  const mode = options.container ? 'stage' : 'legacy';
+  const isStage = mode === 'stage';
   const previous = env.__AgentMascotGlobalLoader;
-  if (previous?.pluginId === pluginId && previous.revision === RUNTIME_REVISION) return previous
+  // A page or an old standalone script must not replace the host-owned stage.
+  if (!isStage && previous?.mode === 'stage') return previous
+  if (previous?.pluginId === pluginId && previous.revision === RUNTIME_REVISION
+      && (previous.mode || 'legacy') === mode && (!isStage || previous.container === options.container)) return previous
   previous?.stop?.();
   let stopped = false;
   let syncing = false;
@@ -335,7 +344,12 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   let mounted = false;
   let runtime = null;
   const isEnabled = () => Boolean(config.enabled && config.replace_agent_entry && (!isCustomPet(config.mascot) || config._pet));
-  const agentEntry = createMoviePilotAgentEntry({
+  const agentEntry = isStage ? {
+    contains: element => Boolean(options.container.contains?.(element)),
+    open: () => options.agent.open(),
+    hide() {}, startObserver() {},
+    destroy() { options.pet.setBubbleAnchor(null); options.pet.setInteracting(false); },
+  } : createMoviePilotAgentEntry({
     env,
     hiddenClass: HIDDEN_CLASS,
     isEnabled,
@@ -343,12 +357,16 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   const adapter = createGlobalDomAdapter({
     agentEntry,
     env,
+    container: options.container,
     getRuntime: () => runtime,
-    nativeEntryStyle: nativeAgentEntryStyle(HIDDEN_CLASS),
+    nativeEntryStyle: isStage ? '' : nativeAgentEntryStyle(HIDDEN_CLASS),
+    onAnchor: isStage ? rect => options.pet.setBubbleAnchor(rect) : undefined,
+    onInteracting: isStage ? value => options.pet.setInteracting(value) : undefined,
     onAssetError() {
       unmount();
       if (!assetError) log('error', '角色图片加载失败，已恢复原生助手入口');
       assetError = '角色图片加载失败，已恢复原生助手入口';
+      if (isStage && !stopped) options.onError?.(new Error(assetError));
     },
     onAssetLoad() { if (assetError) log('info', '角色图片加载已恢复'); assetError = ''; },
   });
@@ -377,7 +395,9 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   });
 
   async function loadConfig() {
-    config = await loadMoviePilotPluginConfig(pluginId, { ...options, env });
+    const next = await loadMoviePilotPluginConfig(pluginId, { ...options, env });
+    if (stopped) return
+    config = next;
     runtime.updateConfig(config);
     const detail = { pluginId, revision: RUNTIME_REVISION, enabled: config.enabled,
       mascot: config.mascot, renderer: isCustomPet(config.mascot) ? 'codex-pet' : 'builtin',
@@ -425,20 +445,23 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
         adapter.render();
       } else {
         unmount();
+        if (isStage) throw new Error('桌宠已停用或所选角色不可用');
       }
       if (lastError) log('info', '全局入口配置读取已恢复');
       lastError = '';
     } catch (error) {
+      if (stopped) return
       unmount();
       const message = String(error?.message || error);
       if (lastError !== message) log('error', '全局入口配置读取失败', message);
       lastError = message;
+      if (isStage) options.onError?.(error);
     } finally {
       syncing = false;
     }
   }
 
-  syncFromConfig();
+  const ready = syncFromConfig();
   configTimer = env.setInterval(syncFromConfig, CONFIG_POLL_MS);
   env.addEventListener('resize', adapter.onResize);
   env.visualViewport?.addEventListener('resize', adapter.onResize);
@@ -446,6 +469,9 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
 
   const handle = {
     pluginId,
+    mode,
+    container: options.container,
+    ready,
     revision: RUNTIME_REVISION,
     sync: syncFromConfig,
     getState() {
@@ -457,10 +483,12 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
         renderer: isCustomPet(config.mascot) ? 'codex-pet' : 'builtin',
         motion: runtime.debugState(),
         error: lastError || assetError || null,
-        nativeEntryAvailable: Boolean(env.document.querySelector(TRIGGER_SELECTOR)),
+        mode,
+        nativeEntryAvailable: isStage ? Boolean(options.agent.getState().available) : Boolean(env.document.querySelector(TRIGGER_SELECTOR)),
       }
     },
     stop() {
+      if (stopped) return
       stopped = true;
       env.clearInterval(configTimer);
       env.removeEventListener('resize', adapter.onResize);
@@ -475,4 +503,12 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   return handle
 }
 
-export { startAgentMascotPatchEntry, loadMoviePilotPluginConfig, moviePilotApiUrl, createMoviePilotAgentEntry, RUNTIME_REVISION };
+function startAgentMascotStage(container, options = {}) {
+  if (!container?.ownerDocument || !container.appendChild || !options.agent?.open
+      || !options.pet?.setBubbleAnchor || !options.pet?.setInteracting) {
+    throw new TypeError('AgentMascot stage requires the host container, agent and pet context')
+  }
+  return startAgentMascotPatchEntry(options.env || container.ownerDocument.defaultView, { ...options, container })
+}
+
+export { startAgentMascotPatchEntry, startAgentMascotStage, loadMoviePilotPluginConfig, moviePilotApiUrl, createMoviePilotAgentEntry, RUNTIME_REVISION };

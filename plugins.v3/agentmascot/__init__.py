@@ -68,6 +68,21 @@ class AgentMascot(_PluginBase):
     def get_render_mode() -> tuple[str, str]:
         return "vue", "dist/assets"
 
+    def get_agent_pets(self) -> list[dict[str, Any]]:
+        """Let the V3.1.4 host own selection and page-session lifecycle."""
+        if (not self.get_state() or getattr(self, "_stopped", True)
+                or not getattr(self, "_replace_agent_entry", True)):
+            return []
+        return [{
+            "key": "mascot",
+            "name": "Agent 桌宠",
+            "description": "使用桌宠插件中选定的角色、动作与跟随设置",
+            "mode": "stage",
+            "component": "AgentPet",
+            "api_version": 1,
+            "bubbles": "host",
+        }]
+
     @staticmethod
     def get_command() -> list[dict[str, Any]]:
         return []

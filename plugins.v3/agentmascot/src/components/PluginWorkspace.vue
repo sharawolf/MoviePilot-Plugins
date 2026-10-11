@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, useId } from 'vue'
+import { computed, inject, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, useId } from 'vue'
 import MascotPreview from './MascotPreview.vue'
 import PetLibrary from './PetLibrary.vue'
 import { hostProps } from '../props.js'
@@ -9,6 +9,7 @@ import '../style.css'
 
 const props = defineProps({ ...hostProps, mode: { type: String, default: 'config' } })
 const emit = defineEmits(['close', 'layout'])
+const agentHost = inject('moviepilot:agent', null)
 const activeTab = ref(props.mode === 'config' ? 'overview' : 'preview')
 const visible = ref(true)
 const discardPrompt = ref(false)
@@ -57,13 +58,20 @@ function visibilityChanged() {
 }
 async function initialize() {
   if (!await controller.load() || !visible.value) return
-  startAgentMascotPatchEntry(window, { api: props.api, pluginId: props.pluginId })
+  connectEntry()
   startSessionObserver()
+}
+function connectEntry() {
+  if (agentHost) {
+    const handle = window.__AgentMascotGlobalLoader
+    if (handle && handle.mode !== 'stage') handle.stop?.()
+    return window.__AgentMascotGlobalLoader?.pluginId === props.pluginId ? window.__AgentMascotGlobalLoader : null
+  }
+  return startAgentMascotPatchEntry(window, { api: props.api, pluginId: props.pluginId })
 }
 async function refresh() {
   if (await controller.load() && visible.value) {
-    const handle = startAgentMascotPatchEntry(window, { api: props.api, pluginId: props.pluginId })
-    await handle.sync()
+    await connectEntry()?.sync()
     startSessionObserver()
     updateSession()
   }
@@ -137,7 +145,7 @@ onBeforeUnmount(deactivate)
             <section class="am-summary-card"><img :src="savedProfile.icon" alt="" /><div><span class="am-eyebrow">当前形象</span><strong>{{ savedProfile.label }}</strong><p>大小 {{ state.saved.scale.toFixed(2) }}× · 速度 {{ state.saved.speed.toFixed(2) }}×</p></div></section>
             <section class="am-summary-card"><VIcon icon="mdi-cursor-default-outline" size="30" color="primary" /><div><span class="am-eyebrow">活动方式</span><strong>{{ state.saved.auto_roam ? '自动游走' : '自由互动' }}</strong><p>{{ state.saved.follow_mouse ? '跟随鼠标' : '不跟随鼠标' }} · {{ state.saved.shadow ? '显示阴影' : '隐藏阴影' }}</p></div></section>
           </div>
-          <section class="am-note"><VIcon icon="mdi-information-outline" size="22" color="primary" /><div><h4>刷新后，重新打开一次桌宠页面</h4><p>打开侧栏「Agent 桌宠」或插件详情即可加载，随后切换页面会保留。整页刷新后需要再次打开。</p></div></section>
+          <section class="am-note"><VIcon icon="mdi-information-outline" size="22" color="primary" /><div v-if="agentHost"><h4>在智能助手中选择一次，刷新自动恢复</h4><p>打开智能助手，点击「更换形象」并选择「Agent 桌宠」。角色由本页设置决定；以后刷新页面无需再打开插件。</p></div><div v-else><h4>当前宿主需手动加载桌宠</h4><p>打开桌宠页面后会保留到本次页面会话结束。升级至 MP v3.1.4 后，可在助手中选择形象并自动恢复。</p></div></section>
           <section class="am-note am-note--subtle"><VIcon icon="mdi-lifebuoy" size="22" /><div><h4>桌宠没有出现？</h4><p>先检查基础设置中的启用和入口替换开关，再点击右上角刷新。停用后，当前页面会在下次状态检查时恢复原生入口。</p></div></section>
           <div class="am-overview-actions"><VBtn variant="tonal" color="primary" prepend-icon="mdi-tune-variant" @click="activeTab = 'basic'">调整设置</VBtn><VBtn variant="text" prepend-icon="mdi-motion-play-outline" @click="activeTab = 'preview'">体验动作</VBtn></div>
         </template>

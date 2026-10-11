@@ -20,6 +20,7 @@ export default defineConfig({
         './Page': './src/components/Page.vue',
         './AppPage': './src/components/AppPage.vue',
         './PluginEntry': './src/plugin-entry.js',
+        './AgentPet': './src/components/AgentPet.vue',
       },
       shared: { vue: { requiredVersion: false, generate: false } },
     }),

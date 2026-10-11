@@ -70,6 +70,33 @@ def test_save_failure_restores_runtime_config(plugin, monkeypatch):
     assert plugin._current_config() == before
 
 
+def test_agent_pet_declaration_tracks_enablement_and_lifecycle(plugin):
+    before = plugin._current_config()
+    expected = [{"key": "mascot", "name": "Agent 桌宠",
+                 "description": "使用桌宠插件中选定的角色、动作与跟随设置",
+                 "mode": "stage", "component": "AgentPet", "api_version": 1,
+                 "bubbles": "host"}]
+    assert plugin.get_agent_pets() == expected
+    assert plugin._current_config() == before
+    plugin.stop_service()
+    assert plugin.get_agent_pets() == []
+    plugin.init_plugin(before)
+    assert plugin.get_agent_pets() == expected
+    plugin.init_plugin({**before, "replace_agent_entry": False})
+    assert plugin.get_agent_pets() == []
+    plugin.init_plugin({**before, "enabled": False})
+    assert plugin.get_agent_pets() == []
+
+
+def test_agent_pet_clone_uses_host_instance_identity(plugin):
+    clone_type = type("AgentMascot_clone", (AgentMascot,), {})
+    clone = object.__new__(clone_type)
+    clone.init_plugin(plugin._current_config())
+    declaration = clone.get_agent_pets()[0]
+    assert declaration["key"] == "mascot"
+    assert "plugin_id" not in declaration  # Supplied by the host for this instance.
+
+
 @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, "invalid"])
 def test_nonfinite_configuration_remains_json_safe(value):
     config = normalize_config({"scale": value, "speed": value})

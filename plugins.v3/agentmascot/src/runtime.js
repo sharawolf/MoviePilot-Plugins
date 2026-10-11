@@ -5,5 +5,5 @@ export {
   r as resolveMascotBehaviors,
 } from '../runtime/runtime-BCybTabx.js'
 export { cloneConfig, normalizeConfig, resolveMascotProfile, createMascotRuntime, isCustomPet, petAssetUrls } from '../runtime/mascot-runtime.js'
-export { startAgentMascotPatchEntry } from '../runtime/agentmascot-loader.js'
+export { startAgentMascotPatchEntry, startAgentMascotStage } from '../runtime/agentmascot-loader.js'
 export { u as unwrapResponse } from '../runtime/provider-mBbtEwEX.js'

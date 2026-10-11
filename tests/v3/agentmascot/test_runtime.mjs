@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { u as unwrap } from '../../../plugins.v3/agentmascot/dist/assets/provider-mBbtEwEX.js';
-import { moviePilotApiUrl, loadMoviePilotPluginConfig, startAgentMascotPatchEntry, createMoviePilotAgentEntry } from '../../../plugins.v3/agentmascot/dist/assets/agentmascot-loader.js';
+import { moviePilotApiUrl, loadMoviePilotPluginConfig, startAgentMascotPatchEntry, startAgentMascotStage, createMoviePilotAgentEntry } from '../../../plugins.v3/agentmascot/dist/assets/agentmascot-loader.js';
 
 const envelope = config => ({ success: true, message: '', data: { config } });
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -78,6 +78,102 @@ function fakeEnv() {
     y() { return Number(nodes.get('agentmascot-global-root').style.transform.match(/translate3d\([^,]+, ([^p]+)px/)[1]); },
   };
 }
+
+function stageHarness(api) {
+  const f = fakeEnv(), anchors = [], interactions = [], errors = [], children = [];
+  let opens = 0;
+  f.env.document.defaultView = f.env;
+  const container = { ownerDocument: f.env.document, contains: element => children.includes(element),
+    appendChild(element) { children.push(element); f.nodes.set(element.id, element); } };
+  const config = { enabled: true, mascot: 'kurisu', replace_agent_entry: true, auto_roam: false };
+  const options = { env: f.env, pluginId: 'AgentMascot_clone',
+    api: api || { get: async path => { assert.equal(path, 'plugin/AgentMascot_clone/status'); return envelope(config); } },
+    agent: { open: () => opens++, getState: () => ({ available: true }) },
+    pet: { setBubbleAnchor: value => anchors.push(value), setInteracting: value => interactions.push(value) },
+    onError: error => errors.push(error),
+  };
+  return { ...f, anchors, interactions, errors, children, container, options, opens: () => opens };
+}
+
+test('host stage cold-starts without opening a plugin page, anchors bubbles and opens the host API', async () => {
+  for (let refresh = 0; refresh < 2; refresh++) {
+    const f = stageHarness();
+    const handle = startAgentMascotStage(f.container, f.options);
+    await handle.ready;
+    assert.equal(handle.getState().mounted, true);
+    assert.equal(handle.getState().mode, 'stage');
+    assert.equal(handle.getState().nativeEntryAvailable, true);
+    assert.ok(f.children.some(element => element.id === 'agentmascot-global-root'));
+    assert.equal(f.classes.size, 0, 'stage must not hide or click native DOM');
+    assert.ok(f.anchors.at(-1).width > 0);
+    const root = f.nodes.get('agentmascot-global-root');
+    root.handlers.get('click')({ preventDefault() {} });
+    assert.equal(f.opens(), 1);
+    assert.equal(f.clicks(), 0);
+    assert.equal(startAgentMascotStage(f.container, f.options), handle);
+    assert.equal(startAgentMascotPatchEntry(f.env), handle, 'legacy page cannot take over a selected stage');
+    handle.stop(); handle.stop();
+    assert.equal(f.anchors.at(-1), null);
+    assert.equal(f.frames.size + f.intervals.size + f.listeners.size + f.events.size + f.nodes.size, 0);
+    assert.equal(f.env.__AgentMascotGlobalLoader, undefined);
+  }
+});
+
+test('stage reports only the active drag and clears interaction on unload', async () => {
+  const f = stageHarness(), handle = startAgentMascotStage(f.container, f.options);
+  await handle.ready;
+  const root = f.nodes.get('agentmascot-global-root');
+  const pointer = { pointerId: 1, pointerType: 'touch', button: 0, clientX: 180, clientY: 180, currentTarget: root, preventDefault() {} };
+  root.handlers.get('pointerdown')(pointer);
+  assert.deepEqual(f.interactions, [true]);
+  root.handlers.get('pointerup')({ ...pointer, pointerId: 2 });
+  assert.deepEqual(f.interactions, [true]);
+  root.handlers.get('pointercancel')({ ...pointer, type: 'pointercancel' });
+  assert.equal(f.interactions.at(-1), false);
+  root.handlers.get('pointerdown')(pointer);
+  handle.stop();
+  assert.equal(f.interactions.at(-1), false);
+  assert.equal(f.anchors.at(-1), null);
+});
+
+test('switching from legacy to stage cleans up the old native patch', async () => {
+  const f = stageHarness();
+  const legacy = startAgentMascotPatchEntry(f.env, { api: f.options.api, pluginId: f.options.pluginId });
+  await legacy.ready;
+  assert.ok(f.classes.has('agentmascot-native-hidden'));
+  const legacyIntervals = new Set(f.intervals);
+  const stage = startAgentMascotStage(f.container, f.options);
+  await stage.ready;
+  assert.equal(legacy.getState().stopped, true);
+  assert.equal(f.classes.size, 0);
+  assert.ok([...f.intervals].every(id => !legacyIntervals.has(id)), 'old runtime timers are released');
+  assert.equal(f.intervals.size, legacyIntervals.size);
+  stage.stop();
+});
+
+test('stage config and image failures reach host fallback; late reads cannot resurrect an unloaded stage', async () => {
+  const failed = stageHarness({ get: async () => { throw new Error('offline'); } });
+  const bad = startAgentMascotStage(failed.container, failed.options);
+  await bad.ready;
+  assert.equal(failed.errors[0].message, 'offline');
+  assert.equal(bad.getState().mounted, false);
+  bad.stop();
+  const f = stageHarness(), handle = startAgentMascotStage(f.container, f.options);
+  await handle.ready;
+  const img = f.nodes.get('agentmascot-global-root').children[0].children[0];
+  img.handlers.get('error')({ currentTarget: img });
+  assert.match(f.errors[0].message, /图片加载失败/);
+  assert.equal(handle.getState().mounted, false);
+  handle.stop();
+  let resolve;
+  const late = stageHarness({ get: () => new Promise(done => { resolve = done; }) });
+  const stopped = startAgentMascotStage(late.container, late.options);
+  stopped.stop();
+  resolve(envelope({ enabled: true, replace_agent_entry: true, mascot: 'kurisu' }));
+  await stopped.ready;
+  assert.equal(late.nodes.size + late.frames.size + late.intervals.size, 0);
+  assert.equal(late.errors.length, 0);
+});
 
 test('global DOM entry gazes nearby and follows distant vertical moves at the live 2x scale', async () => {
   const f = fakeEnv();
