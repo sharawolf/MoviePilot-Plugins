@@ -1,8 +1,8 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { G, W, C, r, R, F, f, M } from './runtime-BCybTabx.js?v=d9a72ff120dfcb19';
-import { isCustomPet, resolveMascotProfile, createMascotRuntime, petAssetUrls, cloneConfig } from './mascot-runtime.js?v=d9a72ff120dfcb19';
-import { startAgentMascotPatchEntry } from './agentmascot-loader.js?v=d9a72ff120dfcb19';
-import { u } from './provider-mBbtEwEX.js?v=d9a72ff120dfcb19';
+import { G, W, C, r, R, F, f, M } from './runtime-BCybTabx.js?v=28fb3acc32ce7e9b';
+import { isCustomPet, resolveMascotProfile, createMascotRuntime, petAssetUrls, cloneConfig } from './mascot-runtime.js?v=28fb3acc32ce7e9b';
+import { startAgentMascotPatchEntry } from './agentmascot-loader.js?v=28fb3acc32ce7e9b';
+import { u } from './provider-mBbtEwEX.js?v=28fb3acc32ce7e9b';
 
 const actionLabels = {
   idle: '待机', walk: '走路', run: '跑步', jump: '跳跃', fall: '下落', land: '落地',
@@ -786,14 +786,16 @@ const _hoisted_24 = { class: "am-slider-card" };
 const _hoisted_25 = ["id"];
 const _hoisted_26 = { class: "am-slider-card" };
 const _hoisted_27 = ["id"];
-const _hoisted_28 = { class: "am-behaviors" };
-const _hoisted_29 = { class: "am-footer" };
-const _hoisted_30 = {
+const _hoisted_28 = { class: "am-range-setting" };
+const _hoisted_29 = ["id"];
+const _hoisted_30 = { class: "am-behaviors" };
+const _hoisted_31 = { class: "am-footer" };
+const _hoisted_32 = {
   class: "am-feedback",
   role: "alert"
 };
-const _hoisted_31 = { class: "am-footer-actions" };
-const _hoisted_32 = { class: "am-footer-actions" };
+const _hoisted_33 = { class: "am-footer-actions" };
+const _hoisted_34 = { class: "am-footer-actions" };
 
 const {computed,inject,onActivated,onBeforeUnmount,onDeactivated,onMounted,ref,useId} = await importShared('vue');
 
@@ -819,6 +821,7 @@ const tabs = [
   { key: 'appearance', label: '形象与行为', icon: 'mdi-palette-outline', description: '选择角色，调整大小和活动方式' },
   { key: 'preview', label: '动作预览', icon: 'mdi-motion-play-outline', description: '在独立预览区体验角色动作' },
 ];
+const ACTIVITY_RANGE_LABELS = { surfaces: '站上页面元素', floor: '只在页面底部', free: '视口内自由' };
 const currentTab = computed(() => tabs.find(tab => tab.key === activeTab.value));
 const controller = createConfigController({
   api: props.api, pluginId: props.pluginId, initialConfig: props.initialConfig,
@@ -830,6 +833,7 @@ const controller = createConfigController({
 const { state, dirty } = controller;
 const profile = computed(() => resolveMascotProfile(state.draft.mascot, state.pets));
 const savedProfile = computed(() => resolveMascotProfile(state.saved.mascot, state.pets));
+const savedActivityRange = computed(() => ACTIVITY_RANGE_LABELS[state.saved.activity_range] || ACTIVITY_RANGE_LABELS.surfaces);
 const previewConfig = computed(() => ({ ...state.draft, _pet: state.pets.find(pet => pet.id === state.draft.mascot) }));
 const busy = computed(() => state.loading || state.saving || libraryBusy.value);
 const controlsDisabled = computed(() => !state.ready || busy.value || state.pendingReadback);
@@ -919,6 +923,7 @@ return (_ctx, _cache) => {
   const _component_VCardItem = _resolveComponent("VCardItem");
   const _component_VCard = _resolveComponent("VCard");
   const _component_VSlider = _resolveComponent("VSlider");
+  const _component_VBtnToggle = _resolveComponent("VBtnToggle");
 
   return (_openBlock(), _createElementBlock("section", {
     class: _normalizeClass(["am-workspace", [`am-workspace--${__props.mode}`, { 'am-workspace--overview': activeTab.value === 'overview' }]]),
@@ -1025,7 +1030,7 @@ return (_ctx, _cache) => {
                     "prepend-icon": "mdi-refresh",
                     onClick: refresh
                   }, {
-                    default: _withCtx(() => [...(_cache[12] || (_cache[12] = [
+                    default: _withCtx(() => [...(_cache[13] || (_cache[13] = [
                       _createTextVNode("重新读取", -1)
                     ]))]),
                     _: 1
@@ -1034,7 +1039,7 @@ return (_ctx, _cache) => {
             ]))
           : (activeTab.value === 'overview')
             ? (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
-                _cache[26] || (_cache[26] = _createElementVNode("div", { class: "am-section-heading" }, [
+                _cache[27] || (_cache[27] = _createElementVNode("div", { class: "am-section-heading" }, [
                   _createElementVNode("div", null, [
                     _createElementVNode("h3", null, "运行总览"),
                     _createElementVNode("p", null, "以下状态基于已保存设置与当前页面。")
@@ -1044,27 +1049,27 @@ return (_ctx, _cache) => {
                   _createElementVNode("li", {
                     class: _normalizeClass({ 'am-flow--ready': _unref(state).saved.enabled })
                   }, [
-                    _cache[14] || (_cache[14] = _createElementVNode("span", null, "1", -1)),
+                    _cache[15] || (_cache[15] = _createElementVNode("span", null, "1", -1)),
                     _createElementVNode("div", null, [
-                      _cache[13] || (_cache[13] = _createElementVNode("strong", null, "启用桌宠", -1)),
+                      _cache[14] || (_cache[14] = _createElementVNode("strong", null, "启用桌宠", -1)),
                       _createElementVNode("small", null, _toDisplayString(_unref(state).saved.enabled ? '已保存为启用' : '前往基础设置启用'), 1)
                     ])
                   ], 2),
                   _createElementVNode("li", {
                     class: _normalizeClass({ 'am-flow--ready': session.value.mounted })
                   }, [
-                    _cache[16] || (_cache[16] = _createElementVNode("span", null, "2", -1)),
+                    _cache[17] || (_cache[17] = _createElementVNode("span", null, "2", -1)),
                     _createElementVNode("div", null, [
-                      _cache[15] || (_cache[15] = _createElementVNode("strong", null, "加载页面形象", -1)),
+                      _cache[16] || (_cache[16] = _createElementVNode("strong", null, "加载页面形象", -1)),
                       _createElementVNode("small", null, _toDisplayString(session.value.syncing ? '正在检查' : session.value.mounted ? '当前页面已显示' : '当前页面未显示'), 1)
                     ])
                   ], 2),
                   _createElementVNode("li", {
                     class: _normalizeClass({ 'am-flow--ready': session.value.mounted && session.value.nativeEntryAvailable })
                   }, [
-                    _cache[18] || (_cache[18] = _createElementVNode("span", null, "3", -1)),
+                    _cache[19] || (_cache[19] = _createElementVNode("span", null, "3", -1)),
                     _createElementVNode("div", null, [
-                      _cache[17] || (_cache[17] = _createElementVNode("strong", null, "连接智能助手", -1)),
+                      _cache[18] || (_cache[18] = _createElementVNode("strong", null, "连接智能助手", -1)),
                       _createElementVNode("small", null, _toDisplayString(!_unref(state).saved.replace_agent_entry ? '入口替换已关闭' : session.value.mounted && session.value.nativeEntryAvailable ? '原生入口可用' : '等待原生入口就绪'), 1)
                     ])
                   ], 2)
@@ -1076,7 +1081,7 @@ return (_ctx, _cache) => {
                       alt: ""
                     }, null, 8, _hoisted_12),
                     _createElementVNode("div", null, [
-                      _cache[19] || (_cache[19] = _createElementVNode("span", { class: "am-eyebrow" }, "当前形象", -1)),
+                      _cache[20] || (_cache[20] = _createElementVNode("span", { class: "am-eyebrow" }, "当前形象", -1)),
                       _createElementVNode("strong", null, _toDisplayString(savedProfile.value.label), 1),
                       _createElementVNode("p", null, "大小 " + _toDisplayString(_unref(state).saved.scale.toFixed(2)) + "× · 速度 " + _toDisplayString(_unref(state).saved.speed.toFixed(2)) + "×", 1)
                     ])
@@ -1088,9 +1093,9 @@ return (_ctx, _cache) => {
                       color: "primary"
                     }),
                     _createElementVNode("div", null, [
-                      _cache[20] || (_cache[20] = _createElementVNode("span", { class: "am-eyebrow" }, "活动方式", -1)),
+                      _cache[21] || (_cache[21] = _createElementVNode("span", { class: "am-eyebrow" }, "活动方式", -1)),
                       _createElementVNode("strong", null, _toDisplayString(_unref(state).saved.auto_roam ? '自动游走' : '自由互动'), 1),
-                      _createElementVNode("p", null, _toDisplayString(_unref(state).saved.follow_mouse ? '跟随鼠标' : '不跟随鼠标') + " · " + _toDisplayString(_unref(state).saved.shadow ? '显示阴影' : '隐藏阴影'), 1)
+                      _createElementVNode("p", null, _toDisplayString(savedActivityRange.value) + " · " + _toDisplayString(_unref(state).saved.follow_mouse ? '跟随鼠标' : '不跟随鼠标') + " · " + _toDisplayString(_unref(state).saved.shadow ? '显示阴影' : '隐藏阴影'), 1)
                     ])
                   ])
                 ]),
@@ -1101,11 +1106,11 @@ return (_ctx, _cache) => {
                     color: "primary"
                   }),
                   (_unref(agentHost))
-                    ? (_openBlock(), _createElementBlock("div", _hoisted_15, [...(_cache[21] || (_cache[21] = [
+                    ? (_openBlock(), _createElementBlock("div", _hoisted_15, [...(_cache[22] || (_cache[22] = [
                         _createElementVNode("h4", null, "在智能助手中选择一次，刷新自动恢复", -1),
                         _createElementVNode("p", null, "打开智能助手，点击「更换形象」并选择「Agent 桌宠」。角色由本页设置决定；以后刷新页面无需再打开插件。", -1)
                       ]))]))
-                    : (_openBlock(), _createElementBlock("div", _hoisted_16, [...(_cache[22] || (_cache[22] = [
+                    : (_openBlock(), _createElementBlock("div", _hoisted_16, [...(_cache[23] || (_cache[23] = [
                         _createElementVNode("h4", null, "当前宿主需手动加载桌宠", -1),
                         _createElementVNode("p", null, "打开桌宠页面后会保留到本次页面会话结束。升级至 MP v3.1.4 后，可在助手中选择形象并自动恢复。", -1)
                       ]))]))
@@ -1115,7 +1120,7 @@ return (_ctx, _cache) => {
                     icon: "mdi-lifebuoy",
                     size: "22"
                   }),
-                  _cache[23] || (_cache[23] = _createElementVNode("div", null, [
+                  _cache[24] || (_cache[24] = _createElementVNode("div", null, [
                     _createElementVNode("h4", null, "桌宠没有出现？"),
                     _createElementVNode("p", null, "先检查基础设置中的启用和入口替换开关，再点击右上角刷新。停用后，当前页面会在下次状态检查时恢复原生入口。")
                   ], -1))
@@ -1127,7 +1132,7 @@ return (_ctx, _cache) => {
                     "prepend-icon": "mdi-tune-variant",
                     onClick: _cache[0] || (_cache[0] = $event => (activeTab.value = 'basic'))
                   }, {
-                    default: _withCtx(() => [...(_cache[24] || (_cache[24] = [
+                    default: _withCtx(() => [...(_cache[25] || (_cache[25] = [
                       _createTextVNode("调整设置", -1)
                     ]))]),
                     _: 1
@@ -1137,7 +1142,7 @@ return (_ctx, _cache) => {
                     "prepend-icon": "mdi-motion-play-outline",
                     onClick: _cache[1] || (_cache[1] = $event => (activeTab.value = 'preview'))
                   }, {
-                    default: _withCtx(() => [...(_cache[25] || (_cache[25] = [
+                    default: _withCtx(() => [...(_cache[26] || (_cache[26] = [
                       _createTextVNode("体验动作", -1)
                     ]))]),
                     _: 1
@@ -1146,7 +1151,7 @@ return (_ctx, _cache) => {
               ], 64))
             : (activeTab.value === 'basic')
               ? (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [
-                  _cache[27] || (_cache[27] = _createElementVNode("div", { class: "am-section-heading" }, [
+                  _cache[28] || (_cache[28] = _createElementVNode("div", { class: "am-section-heading" }, [
                     _createElementVNode("div", null, [
                       _createElementVNode("h3", null, "基础设置"),
                       _createElementVNode("p", null, "修改暂存为草稿，点击底部保存后生效。")
@@ -1230,12 +1235,12 @@ return (_ctx, _cache) => {
                     ]),
                     _: 1
                   }),
-                  _cache[28] || (_cache[28] = _createElementVNode("p", { class: "am-hint" }, "关闭侧栏入口后，仍可从插件详情打开桌宠页面。", -1))
+                  _cache[29] || (_cache[29] = _createElementVNode("p", { class: "am-hint" }, "关闭侧栏入口后，仍可从插件详情打开桌宠页面。", -1))
                 ], 64))
               : (activeTab.value === 'appearance')
                 ? (_openBlock(), _createElementBlock(_Fragment, { key: 3 }, [
                     _createElementVNode("div", _hoisted_19, [
-                      _cache[30] || (_cache[30] = _createElementVNode("div", null, [
+                      _cache[31] || (_cache[31] = _createElementVNode("div", null, [
                         _createElementVNode("h3", null, "形象与行为"),
                         _createElementVNode("p", null, "选择角色，调整它在页面上的活动方式。")
                       ], -1)),
@@ -1245,7 +1250,7 @@ return (_ctx, _cache) => {
                         "prepend-icon": "mdi-motion-play-outline",
                         onClick: _cache[5] || (_cache[5] = $event => (activeTab.value = 'preview'))
                       }, {
-                        default: _withCtx(() => [...(_cache[29] || (_cache[29] = [
+                        default: _withCtx(() => [...(_cache[30] || (_cache[30] = [
                           _createTextVNode("预览效果", -1)
                         ]))]),
                         _: 1
@@ -1298,7 +1303,7 @@ return (_ctx, _cache) => {
                         _createElementVNode("label", {
                           id: `${_unref(fieldId)}-scale`
                         }, [
-                          _cache[31] || (_cache[31] = _createTextVNode("角色大小 ", -1)),
+                          _cache[32] || (_cache[32] = _createTextVNode("角色大小 ", -1)),
                           _createElementVNode("strong", null, _toDisplayString(_unref(state).draft.scale.toFixed(2)) + "×", 1)
                         ], 8, _hoisted_25),
                         _createVNode(_component_VSlider, {
@@ -1312,13 +1317,13 @@ return (_ctx, _cache) => {
                           "aria-labelledby": `${_unref(fieldId)}-scale`,
                           "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => (_unref(controller).edit('scale', $event)))
                         }, null, 8, ["model-value", "disabled", "aria-labelledby"]),
-                        _cache[32] || (_cache[32] = _createElementVNode("p", null, "0.60× — 4.00×", -1))
+                        _cache[33] || (_cache[33] = _createElementVNode("p", null, "0.60× — 4.00×", -1))
                       ]),
                       _createElementVNode("section", _hoisted_26, [
                         _createElementVNode("label", {
                           id: `${_unref(fieldId)}-speed`
                         }, [
-                          _cache[33] || (_cache[33] = _createTextVNode("移动速度 ", -1)),
+                          _cache[34] || (_cache[34] = _createTextVNode("移动速度 ", -1)),
                           _createElementVNode("strong", null, _toDisplayString(_unref(state).draft.speed.toFixed(2)) + "×", 1)
                         ], 8, _hoisted_27),
                         _createVNode(_component_VSlider, {
@@ -1332,10 +1337,50 @@ return (_ctx, _cache) => {
                           "aria-labelledby": `${_unref(fieldId)}-speed`,
                           "onUpdate:modelValue": _cache[9] || (_cache[9] = $event => (_unref(controller).edit('speed', $event)))
                         }, null, 8, ["model-value", "disabled", "aria-labelledby"]),
-                        _cache[34] || (_cache[34] = _createElementVNode("p", null, "0.40× — 2.00×", -1))
+                        _cache[35] || (_cache[35] = _createElementVNode("p", null, "0.40× — 2.00×", -1))
                       ])
                     ]),
                     _createElementVNode("div", _hoisted_28, [
+                      _createElementVNode("label", {
+                        id: `${_unref(fieldId)}-activity-range`
+                      }, "活动范围", 8, _hoisted_29),
+                      _createVNode(_component_VBtnToggle, {
+                        class: "am-range-toggle",
+                        "model-value": _unref(state).draft.activity_range,
+                        disabled: controlsDisabled.value,
+                        mandatory: "",
+                        divided: "",
+                        color: "primary",
+                        variant: "outlined",
+                        density: "compact",
+                        role: "group",
+                        "aria-labelledby": `${_unref(fieldId)}-activity-range`,
+                        "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => (_unref(controller).edit('activity_range', $event)))
+                      }, {
+                        default: _withCtx(() => [
+                          _createVNode(_component_VBtn, { value: "surfaces" }, {
+                            default: _withCtx(() => [...(_cache[36] || (_cache[36] = [
+                              _createTextVNode("站上页面元素", -1)
+                            ]))]),
+                            _: 1
+                          }),
+                          _createVNode(_component_VBtn, { value: "floor" }, {
+                            default: _withCtx(() => [...(_cache[37] || (_cache[37] = [
+                              _createTextVNode("只在页面底部", -1)
+                            ]))]),
+                            _: 1
+                          }),
+                          _createVNode(_component_VBtn, { value: "free" }, {
+                            default: _withCtx(() => [...(_cache[38] || (_cache[38] = [
+                              _createTextVNode("视口内自由", -1)
+                            ]))]),
+                            _: 1
+                          })
+                        ]),
+                        _: 1
+                      }, 8, ["model-value", "disabled", "aria-labelledby"])
+                    ]),
+                    _createElementVNode("div", _hoisted_30, [
                       (_openBlock(), _createElementBlock(_Fragment, null, _renderList([{ key: 'follow_mouse', label: '跟随鼠标' }, { key: 'auto_roam', label: '自动游走' }, { key: 'shadow', label: '地面阴影' }], (item) => {
                         return _createVNode(_component_VSwitch, {
                           key: item.key,
@@ -1350,7 +1395,7 @@ return (_ctx, _cache) => {
                         }, null, 8, ["model-value", "disabled", "label", "onUpdate:modelValue"])
                       }), 64))
                     ]),
-                    _cache[35] || (_cache[35] = _createElementVNode("p", { class: "am-hint" }, "手机上轻点桌宠打开助手，拖动调整位置；滑动页面不会触发跟随。页面桌宠会自动缩小以适应屏幕。", -1))
+                    _cache[39] || (_cache[39] = _createElementVNode("p", { class: "am-hint" }, "手机上轻点桌宠打开助手，拖动调整位置；滑动页面不会触发跟随。页面桌宠会自动缩小以适应屏幕。", -1))
                   ], 64))
                 : (activeTab.value === 'preview' && visible.value)
                   ? (_openBlock(), _createBlock(_sfc_main$2, {
@@ -1360,16 +1405,16 @@ return (_ctx, _cache) => {
                   : _createCommentVNode("", true)
       ], 2)
     ]),
-    _createElementVNode("footer", _hoisted_29, [
+    _createElementVNode("footer", _hoisted_31, [
       (discardPrompt.value)
         ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
-            _createElementVNode("div", _hoisted_30, _toDisplayString(_unref(state).pendingReadback ? '配置已提交但尚未确认，关闭不会撤回已提交内容。' : '关闭将放弃未保存的修改。'), 1),
-            _createElementVNode("div", _hoisted_31, [
+            _createElementVNode("div", _hoisted_32, _toDisplayString(_unref(state).pendingReadback ? '配置已提交但尚未确认，关闭不会撤回已提交内容。' : '关闭将放弃未保存的修改。'), 1),
+            _createElementVNode("div", _hoisted_33, [
               _createVNode(_component_VBtn, {
                 variant: "text",
-                onClick: _cache[10] || (_cache[10] = $event => (discardPrompt.value = false))
+                onClick: _cache[11] || (_cache[11] = $event => (discardPrompt.value = false))
               }, {
-                default: _withCtx(() => [...(_cache[36] || (_cache[36] = [
+                default: _withCtx(() => [...(_cache[40] || (_cache[40] = [
                   _createTextVNode("继续编辑", -1)
                 ]))]),
                 _: 1
@@ -1377,7 +1422,7 @@ return (_ctx, _cache) => {
               _createVNode(_component_VBtn, {
                 variant: "tonal",
                 color: "warning",
-                onClick: _cache[11] || (_cache[11] = $event => (emit('close')))
+                onClick: _cache[12] || (_cache[12] = $event => (emit('close')))
               }, {
                 default: _withCtx(() => [
                   _createTextVNode(_toDisplayString(_unref(state).pendingReadback ? '仍然关闭' : '放弃并关闭'), 1)
@@ -1397,7 +1442,7 @@ return (_ctx, _cache) => {
               }, null, 8, ["icon"]),
               _createElementVNode("span", null, _toDisplayString(feedback.value), 1)
             ], 2),
-            _createElementVNode("div", _hoisted_32, [
+            _createElementVNode("div", _hoisted_34, [
               (_unref(dirty))
                 ? (_openBlock(), _createBlock(_component_VBtn, {
                     key: 0,
@@ -1405,7 +1450,7 @@ return (_ctx, _cache) => {
                     disabled: busy.value || _unref(state).pendingReadback,
                     onClick: _unref(controller).reset
                   }, {
-                    default: _withCtx(() => [...(_cache[37] || (_cache[37] = [
+                    default: _withCtx(() => [...(_cache[41] || (_cache[41] = [
                       _createTextVNode("撤销修改", -1)
                     ]))]),
                     _: 1
@@ -1417,7 +1462,7 @@ return (_ctx, _cache) => {
                       disabled: _unref(state).saving,
                       onClick: close
                     }, {
-                      default: _withCtx(() => [...(_cache[38] || (_cache[38] = [
+                      default: _withCtx(() => [...(_cache[42] || (_cache[42] = [
                         _createTextVNode("关闭", -1)
                       ]))]),
                       _: 1
@@ -1431,7 +1476,7 @@ return (_ctx, _cache) => {
                     loading: _unref(state).loading,
                     onClick: refresh
                   }, {
-                    default: _withCtx(() => [...(_cache[39] || (_cache[39] = [
+                    default: _withCtx(() => [...(_cache[43] || (_cache[43] = [
                       _createTextVNode("刷新确认", -1)
                     ]))]),
                     _: 1
@@ -1445,7 +1490,7 @@ return (_ctx, _cache) => {
                     disabled: !_unref(dirty) || !_unref(state).ready || _unref(state).loading || libraryBusy.value,
                     onClick: _unref(controller).save
                   }, {
-                    default: _withCtx(() => [...(_cache[40] || (_cache[40] = [
+                    default: _withCtx(() => [...(_cache[44] || (_cache[44] = [
                       _createTextVNode("保存设置", -1)
                     ]))]),
                     _: 1

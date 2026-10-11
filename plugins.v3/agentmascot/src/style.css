@@ -55,6 +55,10 @@
 .am-slider-card label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; }
 .am-slider-card label strong { color: rgb(var(--v-theme-primary)); font-variant-numeric: tabular-nums; }
 .am-slider-card p { font-size: 11px; opacity: .6; }
+.am-range-setting { display: grid; gap: 8px; margin-bottom: 16px; min-width: 0; }
+.am-range-setting > label { font-size: 13px; }
+.am-range-toggle { width: 100%; min-width: 0; }
+.am-range-toggle .v-btn { flex: 1 1 0; min-width: 0; min-height: 44px; height: auto; padding-inline: 6px; white-space: normal; line-height: 1.35; font-size: 12px; letter-spacing: 0; }
 .am-behaviors { display: flex; gap: 20px; flex-wrap: wrap; border-top: 1px solid var(--am-line); padding-top: 12px; }
 .am-behaviors .v-label { font-size: 13px; }
 .am-footer { flex: 0 0 auto; min-height: 68px; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--am-line); background: transparent; }

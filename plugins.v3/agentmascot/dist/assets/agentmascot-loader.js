@@ -1,13 +1,13 @@
-import { S as SURFACE_SCAN_MS, h as buildDomSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js?v=d9a72ff120dfcb19';
-import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls, applyMascotImage } from './mascot-runtime.js?v=d9a72ff120dfcb19';
-import { u as unwrapResponse } from './provider-mBbtEwEX.js?v=d9a72ff120dfcb19';
-import { createPointerInput, viewportGeometry } from './pointer-input.js?v=d9a72ff120dfcb19';
+import { S as SURFACE_SCAN_MS, j as buildDomSurfaces, f as buildSurfaceLanes, V as VIEWPORT_PADDING, D as DEFAULT_CONFIG } from './runtime-BCybTabx.js?v=28fb3acc32ce7e9b';
+import { normalizeConfig, createMascotRuntime, isCustomPet, petAssetUrls, applyMascotImage } from './mascot-runtime.js?v=28fb3acc32ce7e9b';
+import { u as unwrapResponse } from './provider-mBbtEwEX.js?v=28fb3acc32ce7e9b';
+import { createPointerInput, viewportGeometry } from './pointer-input.js?v=28fb3acc32ce7e9b';
 
 const ENTRY_SELECTOR = '.agent-assistant-fab';
 const TRIGGER_SELECTOR = '.agent-assistant-fab__trigger';
 const PANEL_SELECTOR = '.agent-assistant-panel';
 // Replaced with a content digest in both distribution entry points at build time.
-const RUNTIME_REVISION = 'd9a72ff120dfcb19';
+const RUNTIME_REVISION = '28fb3acc32ce7e9b';
 
 function nativeAgentEntryStyle(hiddenClass) {
   return `
@@ -107,6 +107,8 @@ const DOM_SURFACE_SELECTORS = [
   '.v-sheet',
   '.v-window',
   '.v-table',
+  '.v-overlay__content',
+  '[role="dialog"]',
   '[class*="dashboard"]',
   '[class*="layout"]',
 ].join(',');
@@ -114,11 +116,13 @@ const DOM_SURFACE_SELECTORS = [
 function createGlobalDomAdapter(options = {}) {
   const env = options.env || globalThis;
   const agentEntry = options.agentEntry;
+  const getConfig = options.getConfig || (() => ({}));
   const getRuntime = options.getRuntime;
   let root = null;
   let img = null;
   let shadow = null;
   let surfaceLanes = [];
+  let surfaces = [];
   let lastSurfaceScan = 0;
   let safeArea = null;
   let viewport = viewportGeometry(env);
@@ -135,23 +139,53 @@ function createGlobalDomAdapter(options = {}) {
   }
 
   function collectSurfaceLanes(context, force = false) {
+    if (getConfig().activity_range === 'floor') return buildSurfaceLanes(context, { ratios: [] })
+    if (getConfig().activity_range === 'free') return buildSurfaceLanes(context)
+    surfaceLanes = buildSurfaceLanes(context, {
+      ratios: [],
+      extraAnchors: collectSurfaces(context, force).map(surface => surface.top),
+    });
+    return surfaceLanes
+  }
+
+  /** 读取并缓存可供桌宠站立的页面矩形。 */
+  function collectSurfaces(context, force = false) {
+    if (getConfig().activity_range === 'free') return []
+    if (getConfig().activity_range === 'floor') return buildDomSurfaces(context, [])
     const now = env.performance?.now?.() || Date.now();
-    if (!force && surfaceLanes.length && now - lastSurfaceScan < SURFACE_SCAN_MS) return surfaceLanes
+    if (!force && surfaces.length && now - lastSurfaceScan < SURFACE_SCAN_MS) return surfaces
 
     try {
-      surfaceLanes = buildDomSurfaceLanes(context, viewport.compact || viewport.left || viewport.top ? [] : env.document.querySelectorAll(DOM_SURFACE_SELECTORS), {
-        getStyle: element => env.getComputedStyle(element),
-        onError: error => console.debug('[AgentMascot] surface element skipped', error),
-        shouldIgnoreElement: element => element === root || root?.contains(element) || agentEntry.contains(element),
-        viewportPadding: VIEWPORT_PADDING,
-      });
+      surfaces = buildDomSurfaces(context,
+        viewport.compact || viewport.left || viewport.top ? [] : env.document.querySelectorAll(DOM_SURFACE_SELECTORS), {
+          getStyle: element => env.getComputedStyle(element),
+          isTopVisible: typeof env.document.elementFromPoint === 'function'
+            ? (element, x, y) => {
+              const hit = env.document.elementFromPoint(x, y);
+              return Boolean(hit && hit !== root && !root?.contains(hit)
+                && (hit === element || element.contains?.(hit)));
+            }
+            : undefined,
+          onError: error => console.debug('[AgentMascot] surface element skipped', error),
+          shouldIgnoreElement: element => element === root || root?.contains(element) || agentEntry.contains(element),
+          offsetX: viewport.left,
+          offsetY: viewport.top,
+          petHeight: context.petHeight ?? context.size,
+        });
     } catch (error) {
       console.debug('[AgentMascot] surface scan skipped', error);
-      surfaceLanes = buildDomSurfaceLanes(context, []);
+      surfaces = buildDomSurfaces(context, []);
     }
 
     lastSurfaceScan = now;
-    return surfaceLanes
+    return surfaces
+  }
+
+  /** 清除滚动、缩放或配置切换后失效的矩形缓存。 */
+  function invalidateSurfaces() {
+    surfaces = [];
+    surfaceLanes = [];
+    lastSurfaceScan = 0;
   }
 
   function render() {
@@ -253,6 +287,7 @@ function createGlobalDomAdapter(options = {}) {
     (options.container || env.document.body).appendChild(root);
     env.document.addEventListener('pointermove', input.hover, { passive: true, capture: true });
     env.document.addEventListener('pointerleave', input.leave);
+    env.document.addEventListener('scroll', invalidateSurfaces, true);
     root.addEventListener('pointerdown', input.down);
     root.addEventListener('pointermove', input.move);
     root.addEventListener('pointerup', input.end);
@@ -264,6 +299,7 @@ function createGlobalDomAdapter(options = {}) {
   function unmount() {
     env.document.removeEventListener('pointermove', input.hover, true);
     env.document.removeEventListener('pointerleave', input.leave);
+    env.document.removeEventListener('scroll', invalidateSurfaces, true);
     input.reset();
     options.onAnchor?.(null);
     safeArea?.remove();
@@ -276,7 +312,7 @@ function createGlobalDomAdapter(options = {}) {
 
   function onResize() {
     viewport = viewportGeometry(env, safeArea ? env.getComputedStyle(safeArea) : {});
-    surfaceLanes = [];
+    invalidateSurfaces();
     input.leave();
     runtime().clampToBounds();
     render();
@@ -286,6 +322,8 @@ function createGlobalDomAdapter(options = {}) {
     bounds,
     config: config => ({ ...config, scale: Math.min(config.scale, viewport.maxScale) }),
     collectSurfaceLanes,
+    collectSurfaces,
+    invalidateSurfaces,
     mount,
     onResize,
     render,
@@ -358,6 +396,7 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
     agentEntry,
     env,
     container: options.container,
+    getConfig: () => config,
     getRuntime: () => runtime,
     nativeEntryStyle: isStage ? '' : nativeAgentEntryStyle(HIDDEN_CLASS),
     onAnchor: isStage ? rect => options.pet.setBubbleAnchor(rect) : undefined,
@@ -375,6 +414,7 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
     bounds: adapter.bounds,
     getConfig: () => adapter.config(config),
     getSurfaceLanes: adapter.collectSurfaceLanes,
+    getSurfaces: adapter.collectSurfaces,
     initialPet: {
       anchorX: 180,
       anchorY: 180,
@@ -397,11 +437,13 @@ function startAgentMascotPatchEntry(env = globalThis, options = {}) {
   async function loadConfig() {
     const next = await loadMoviePilotPluginConfig(pluginId, { ...options, env });
     if (stopped) return
+    if (config.activity_range !== next.activity_range) adapter.invalidateSurfaces();
     config = next;
     runtime.updateConfig(config);
     const detail = { pluginId, revision: RUNTIME_REVISION, enabled: config.enabled,
       mascot: config.mascot, renderer: isCustomPet(config.mascot) ? 'codex-pet' : 'builtin',
-      followMouse: config.follow_mouse, autoRoam: config.auto_roam, scale: config.scale, speed: config.speed,
+      followMouse: config.follow_mouse, autoRoam: config.auto_roam, activityRange: config.activity_range,
+      scale: config.scale, speed: config.speed,
       assetAvailable: !isCustomPet(config.mascot) || Boolean(config._pet) };
     const signature = JSON.stringify(detail);
     if (signature !== lastConfigLog) {

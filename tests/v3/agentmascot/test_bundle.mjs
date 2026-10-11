@@ -49,7 +49,7 @@ test('built federation exposes load with host Vue and resolve their styles', asy
   }
 })
 
-test('built relative imports exist and original character engine is preserved', () => {
+test('built relative imports exist and the character engine matches its verified hash', () => {
   for (const filename of readdirSync(assets).filter(name => name.endsWith('.js'))) {
     const file = new URL(filename, assets)
     const source = readFileSync(file, 'utf8')
@@ -58,7 +58,7 @@ test('built relative imports exist and original character engine is preserved', 
       assert.ok(existsSync(new URL(match[1], file)), `${filename} -> ${match[1]}`)
     }
   }
-  const expected = 'a8b13331388311919324a132c5df318e6a9bc00304089ba082b17d7836f90a5c'
+  const expected = 'd312b1f8aaf423deda16447690b09f6537a087f43ef6867a3c5c59b6e5a49eb4'
   for (const relative of ['runtime/runtime-BCybTabx.js', 'dist/assets/runtime-BCybTabx.js']) {
     assert.equal(createHash('sha256').update(readFileSync(new URL(relative, plugin))).digest('hex'), expected)
   }

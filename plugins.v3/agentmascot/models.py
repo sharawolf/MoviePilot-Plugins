@@ -13,6 +13,7 @@ class MascotConfig(BaseModel):
     show_sidebar_nav: bool = True
     scale: float = Field(default=1.0, ge=0.6, le=4.0)
     speed: float = Field(default=1.0, ge=0.4, le=2.0)
+    activity_range: Literal["surfaces", "floor", "free"] = "surfaces"
     follow_mouse: bool = True
     auto_roam: bool = True
     shadow: bool = True
