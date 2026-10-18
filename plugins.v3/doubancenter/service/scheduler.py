@@ -22,7 +22,8 @@ def get_services(plugin, run_all: Callable[[], None], run_wish: Optional[Callabl
                 "kwargs": {},
             }
         )
-    if plugin._enabled and plugin._folio_enabled and plugin._wish_enabled and plugin._wish_cron and run_wish:
+    # 想看同步与观影同步是两个独立功能，不应被「启用豆瓣时间」(folio_enabled) 阻塞注册
+    if plugin._enabled and plugin._wish_enabled and plugin._wish_cron and run_wish:
         services.append(
             {
                 "id": "DoubanCenterWish",

@@ -292,7 +292,20 @@ def process_wish_queue(self, recognize=None, subscribe=None) -> None:
         subscribe_failed = False
         subscribe_reason = ""
         try:
-            result = subscriber(self, mediainfo, rank_key=WISH_RANK_KEY, rank_name=WISH_RANK_NAME, source_link=link)
+            # 想看条目常以「第二季」独立收录，季号只存在于标题里；
+            # 不把 meta/record_title 传给订阅链会让 season 退化成 None（默认第一季）。
+            wish_meta = MetaInfo(_wish_recognize_title(title))
+            if year:
+                wish_meta.year = str(year)
+            result = subscriber(
+                self,
+                mediainfo,
+                meta=wish_meta,
+                record_title=title,
+                rank_key=WISH_RANK_KEY,
+                rank_name=WISH_RANK_NAME,
+                source_link=link,
+            )
         except Exception as err:
             result = None
             subscribe_failed = True
