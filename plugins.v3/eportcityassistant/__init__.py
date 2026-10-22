@@ -17,7 +17,7 @@ class EportcityAssistant(_PluginBase):
     plugin_name = "智序港城助手"
     plugin_desc = "定时检测智序港城登录状态，自动审批本企业待审核的入园预约，并记录登录凭证的有效期。"
     plugin_icon = "eportcity-logo.png"
-    plugin_version = "1.0.6"
+    plugin_version = "1.0.7"
     plugin_label = "工具"
     plugin_author = "sharawolf"
     author_url = "https://github.com/sharawolf"
@@ -211,13 +211,10 @@ class EportcityAssistant(_PluginBase):
         login_time = user.get("lastLoginTime") or ""
 
         first_ok = state.get("first_ok") or ""
-        expired_at = state.get("expired_at")
-        if expired_at and state.get("login_ok") is not False:
-            # 本次检测成功即代表凭证有效，清除此前误判的失效标记
-            expired_at = None
+        # 本次检测成功即代表凭证当前有效，清除此前的失效标记，保证再次失效时仍能重新通知
+        expired_at = None
         if login_time and (not first_ok or login_time > first_ok):
             first_ok = login_time
-            expired_at = None
         if not first_ok:
             first_ok = now_text
         started = self._parse_time(first_ok)
