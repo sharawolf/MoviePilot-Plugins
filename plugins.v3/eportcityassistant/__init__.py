@@ -17,10 +17,13 @@ class EportcityAssistant(_PluginBase):
     plugin_name = "智序港城助手"
     plugin_desc = "定时检测智序港城登录状态，自动审批本企业待审核的入园预约，并记录登录凭证的有效期。"
     plugin_icon = "eportcity-logo.png"
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     plugin_label = "工具"
     plugin_author = "sharawolf"
     author_url = "https://github.com/sharawolf"
+    # 明确代表凭证失效的错误码与关键词；其余（如 9999 内部错误）按平台临时故障处理
+    _CREDENTIAL_ERROR_CODES = {"401", "403", "4001", "4003", "4010", "1001", "1002"}
+    _CREDENTIAL_ERROR_KEYWORDS = ("token", "登录", "未授权", "认证", "过期", "失效")
     plugin_config_prefix = "eportcityassistant_"
     plugin_order = 50
     auth_level = 1
@@ -126,28 +129,49 @@ class EportcityAssistant(_PluginBase):
             return {"success": False, "message": "未配置 X-Auth-Token"}
         now = datetime.now()
         state = self.get_data(self._STATE_KEY) or {}
-        profile, error = self._check_login()
+        profile, error, credential_error = self._check_login()
         if error:
+            if not credential_error:
+                return self._handle_probe_error(state, now, error)
             return self._handle_login_lost(state, now, error)
         return self._handle_login_ok(state, now, profile)
 
-    def _check_login(self) -> Tuple[Optional[dict], str]:
+    def _check_login(self) -> Tuple[Optional[dict], str, bool]:
         """调用用户信息接口验证当前登录凭证是否有效。"""
-        data, error = self._api("GET", "/api/user/auth/getInfo")
+        data, error, code = self._api("GET", "/api/user/auth/getInfo")
         if error:
-            return None, error
+            return None, error, self._is_credential_error(code, error)
         result = data.get("result") or {}
         user = result.get("user") or {}
         company = result.get("company") or {}
         if not user:
-            return None, "登录凭证无效：未返回用户信息"
-        return {"user": user, "company": company}, ""
+            return None, "登录凭证无效：未返回用户信息", True
+        return {"user": user, "company": company}, "", False
+
+    @classmethod
+    def _is_credential_error(cls, code: str, error: str) -> bool:
+        """区分凭证失效与平台临时故障，避免把 5xx/9999 误判为登录失效。"""
+        if code in cls._CREDENTIAL_ERROR_CODES:
+            return True
+        text = f"{code} {error}".lower()
+        return any(keyword in text for keyword in cls._CREDENTIAL_ERROR_KEYWORDS)
+
+    def _handle_probe_error(self, state: dict, now: datetime, error: str) -> Dict[str, Any]:
+        """接口临时异常时只记录错误，不判定登录失效、不发送通知。"""
+        now_text = now.strftime(self._TIME_FORMAT)
+        state.update({"last_check": now_text, "last_error": error})
+        self.save_data(self._STATE_KEY, state)
+        logger.warn(f"智序港城助手：接口异常，暂不判定登录失效 - {error}")
+        return {"success": False, "message": f"接口异常，登录状态未变更：{error}"}
 
     def _handle_login_lost(self, state: dict, now: datetime, error: str) -> Dict[str, Any]:
         """记录登录失效时间、有效期并发送一次性通知。"""
         now_text = now.strftime(self._TIME_FORMAT)
         first_ok = state.get("first_ok")
-        expired_at = state.get("expired_at") or now_text
+        expired_at = state.get("expired_at")
+        if expired_at and state.get("login_ok") is not False:
+            # 本次检测成功即代表凭证有效，清除此前误判的失效标记
+            expired_at = None or now_text
         duration_hours = state.get("duration_hours")
         if first_ok and not state.get("expired_at"):
             started = self._parse_time(first_ok)
@@ -257,7 +281,7 @@ class EportcityAssistant(_PluginBase):
             "inParkTimeStart": now.strftime("%Y-%m-%d 00:00:00"),
             "inParkTimeEnd": (now + timedelta(days=self._days_ahead)).strftime("%Y-%m-%d 23:59:59"),
         }
-        data, error = self._api("POST", "/api/easypark/gardenPark/findGardenPark", payload)
+        data, error, _ = self._api("POST", "/api/easypark/gardenPark/findGardenPark", payload)
         if error:
             return [], error
         result = data.get("result") or {}
@@ -275,7 +299,7 @@ class EportcityAssistant(_PluginBase):
             "rsv1": mobile,
             "rsv2": company_name,
         }
-        data, error = self._api("POST", "/api/easypark/gardenPark/updateGardenPark", payload)
+        data, error, _ = self._api("POST", "/api/easypark/gardenPark/updateGardenPark", payload)
         if error:
             logger.error(f"智序港城助手：预约 {record.get('id')} 审批失败 - {error}")
             return False, error
@@ -313,10 +337,12 @@ class EportcityAssistant(_PluginBase):
             text="\n".join(lines),
         )
 
-    def _api(self, method: str, path: str, payload: Optional[dict] = None) -> Tuple[Optional[dict], str]:
-        """调用智序港城接口并返回解析后的 JSON 或错误说明。"""
+    def _api(
+        self, method: str, path: str, payload: Optional[dict] = None
+    ) -> Tuple[Optional[dict], str, str]:
+        """调用智序港城接口，返回解析后的 JSON、错误说明与错误码。"""
         if not self._auth_token:
-            return None, "未配置 X-Auth-Token"
+            return None, "未配置 X-Auth-Token", ""
         headers = {
             "X-Auth-Token": self._auth_token,
             "Accept": "application/json, text/plain, */*",
@@ -330,20 +356,20 @@ class EportcityAssistant(_PluginBase):
         try:
             response = request.request(method=method.lower(), url=url, json=payload)
         except Exception as err:
-            return None, f"请求异常：{err}"
+            return None, f"请求异常：{err}", ""
         if response is None:
-            return None, "请求失败：无响应"
+            return None, "请求失败：无响应", ""
         if response.status_code != 200:
-            return None, f"请求失败：HTTP {response.status_code}"
+            return None, f"请求失败：HTTP {response.status_code}", str(response.status_code)
         try:
             data = response.json()
         except Exception:
-            return None, "请求失败：响应不是合法 JSON"
+            return None, "请求失败：响应不是合法 JSON", ""
         code = str(data.get("code") or "")
         if code not in ("0000", "0", "200"):
             message = data.get("message") or data.get("msg") or ""
-            return None, f"接口返回 {code}：{message}".strip()
-        return data, ""
+            return None, f"接口返回 {code}：{message}".strip(), code
+        return data, "", code
 
     @classmethod
     def _parse_time(cls, value: Optional[str]) -> Optional[datetime]:
