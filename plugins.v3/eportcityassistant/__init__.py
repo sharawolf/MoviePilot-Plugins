@@ -1,6 +1,8 @@
 """智序港城入园预约助手插件。"""
 
+import shutil
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.log import logger
@@ -15,9 +17,10 @@ class EportcityAssistant(_PluginBase):
     plugin_name = "智序港城助手"
     plugin_desc = "定时检测智序港城登录状态，自动审批本企业待审核的入园预约，并记录登录凭证的有效期。"
     plugin_icon = "eportcity.png"
-    plugin_version = "1.0.2"
+    plugin_version = "1.0.3"
     plugin_label = "工具"
     plugin_author = "sharawolf"
+    author_url = "https://github.com/sharawolf"
     plugin_config_prefix = "eportcityassistant_"
     plugin_order = 50
     auth_level = 1
@@ -45,6 +48,7 @@ class EportcityAssistant(_PluginBase):
     def init_plugin(self, config: dict = None) -> None:
         """根据插件配置初始化运行状态。"""
         self.stop_service()
+        self._sync_plugin_icon()
         config = config or {}
         self._enabled = bool(config.get("enabled"))
         self._notify = bool(config.get("notify", True))
@@ -57,6 +61,22 @@ class EportcityAssistant(_PluginBase):
         self._days_ahead = self._safe_int(config.get("days_ahead"), 3, 1)
         if self._enabled and not self._auth_token:
             logger.warn("智序港城助手：插件已启用，但未配置 X-Auth-Token")
+
+    @staticmethod
+    def _sync_plugin_icon() -> None:
+        """把插件自带图标同步到前端静态目录，供插件卡片展示。"""
+        try:
+            source = Path(__file__).with_name("eportcity.png")
+            target = Path("/public/plugin_icon/eportcity.png")
+            if not source.exists():
+                return
+            if target.exists() and target.stat().st_size == source.stat().st_size:
+                return
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            logger.info("智序港城助手：插件图标已同步到前端静态目录")
+        except Exception as err:  # noqa: BLE001
+            logger.debug(f"智序港城助手：同步插件图标失败：{err}")
 
     @staticmethod
     def _safe_int(value: Any, default: int, minimum: int) -> int:
