@@ -15,7 +15,7 @@ class EportcityAssistant(_PluginBase):
     plugin_name = "智序港城助手"
     plugin_desc = "定时检测智序港城登录状态，自动审批本企业待审核的入园预约，并记录登录凭证的有效期。"
     plugin_icon = "eportcity.png"
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.2"
     plugin_label = "工具"
     plugin_author = "sharawolf"
     plugin_config_prefix = "eportcityassistant_"
