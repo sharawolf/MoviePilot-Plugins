@@ -16,8 +16,8 @@ class EportcityAssistant(_PluginBase):
 
     plugin_name = "智序港城助手"
     plugin_desc = "定时检测智序港城登录状态，自动审批本企业待审核的入园预约，并记录登录凭证的有效期。"
-    plugin_icon = "eportcity.png"
-    plugin_version = "1.0.3"
+    plugin_icon = "eportcity-logo.png"
+    plugin_version = "1.0.4"
     plugin_label = "工具"
     plugin_author = "sharawolf"
     author_url = "https://github.com/sharawolf"
@@ -62,12 +62,12 @@ class EportcityAssistant(_PluginBase):
         if self._enabled and not self._auth_token:
             logger.warn("智序港城助手：插件已启用，但未配置 X-Auth-Token")
 
-    @staticmethod
-    def _sync_plugin_icon() -> None:
+    def _sync_plugin_icon(self) -> None:
         """把插件自带图标同步到前端静态目录，供插件卡片展示。"""
         try:
-            source = Path(__file__).with_name("eportcity.png")
-            target = Path("/public/plugin_icon/eportcity.png")
+            icon_name = self.plugin_icon or "eportcity.png"
+            source = Path(__file__).with_name(icon_name)
+            target = Path("/public/plugin_icon") / icon_name
             if not source.exists():
                 return
             if target.exists() and target.stat().st_size == source.stat().st_size:
