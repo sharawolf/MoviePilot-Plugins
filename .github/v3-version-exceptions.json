@@ -21,5 +21,10 @@
     "mode": "v3_only",
     "v3_version": "3.0.7",
     "reason": "new V3-only plugin on the approved 3.x version line"
+  },
+  "EportcityAssistant": {
+    "mode": "v3_only",
+    "v3_version": "1.0.0",
+    "reason": "new V3-only plugin on the approved 3.x version line"
   }
 }
